@@ -5,7 +5,7 @@ use crate::ansi_background::AnsiBackground;
 use crate::cursor::SelectionMode;
 use crate::editor::BufferMetadata;
 use crate::event::{BufferId, EventLog, SplitDirection};
-use crate::line_wrapping::{char_position_to_segment, wrap_line, WrapConfig};
+use crate::line_wrapping::{wrap_line, WrapConfig};
 use crate::plugin_api::ViewTransformPayload;
 use crate::split::SplitManager;
 use crate::state::{EditorState, ViewMode};
@@ -18,6 +18,22 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Clear, Paragraph};
 use ratatui::Frame;
 use std::collections::HashMap;
+
+fn push_span_with_map(
+    spans: &mut Vec<Span<'static>>,
+    map: &mut Vec<Option<usize>>,
+    text: String,
+    style: Style,
+    view_idx: Option<usize>,
+) {
+    if text.is_empty() {
+        return;
+    }
+    for _ in text.chars() {
+        map.push(view_idx);
+    }
+    spans.push(Span::styled(text, style));
+}
 
 /// Renders split panes and their content
 pub struct SplitRenderer;
@@ -728,7 +744,6 @@ impl SplitRenderer {
         // Track cursor position during rendering (eliminates duplicate line iteration)
         let mut cursor_screen_x = 0u16;
         let mut cursor_screen_y = 0u16;
-        let mut cursor_found = false;
         let mut view_to_screen: HashMap<usize, (u16, u16)> = HashMap::new();
 
         loop {
@@ -761,7 +776,7 @@ impl SplitRenderer {
 
             // Build line with selection highlighting
             let mut line_spans = Vec::new();
-            let mut content_view_map: Vec<Option<usize>> = Vec::new();
+            let mut line_view_map: Vec<Option<usize>> = Vec::new();
 
             // Render left margin (indicators + line numbers + separator)
             if state.margins.left_config.enabled {
@@ -769,13 +784,22 @@ impl SplitRenderer {
                 // Check for diagnostic indicator on this line (computed dynamically from overlays)
                 if diagnostic_lines.contains(&current_line_num) {
                     // Show diagnostic indicator
-                    line_spans.push(Span::styled(
+                    push_span_with_map(
+                        &mut line_spans,
+                        &mut line_view_map,
                         "●".to_string(),
                         Style::default().fg(ratatui::style::Color::Red),
-                    ));
+                        None,
+                    );
                 } else {
                     // Show space (reserved for future indicators like breakpoints)
-                    line_spans.push(Span::raw(" "));
+                    push_span_with_map(
+                        &mut line_spans,
+                        &mut line_view_map,
+                        " ".to_string(),
+                        Style::default(),
+                        None,
+                    );
                 }
 
                 // Next N columns: render line number (right-aligned)
@@ -791,15 +815,24 @@ impl SplitRenderer {
                 let margin_style =
                     style_opt.unwrap_or_else(|| Style::default().fg(theme.line_number_fg));
 
-                line_spans.push(Span::styled(rendered_text, margin_style));
+                push_span_with_map(
+                    &mut line_spans,
+                    &mut line_view_map,
+                    rendered_text,
+                    margin_style,
+                    None,
+                );
 
                 // Render separator
                 if state.margins.left_config.show_separator {
                     let separator_style = Style::default().fg(theme.line_number_fg);
-                    line_spans.push(Span::styled(
+                    push_span_with_map(
+                        &mut line_spans,
+                        &mut line_view_map,
                         state.margins.left_config.separator.clone(),
                         separator_style,
-                    ));
+                        None,
+                    );
                 }
             }
 
@@ -1075,11 +1108,13 @@ impl SplitRenderer {
                             {
                                 // Add spacing: "hint_text " before the character
                                 let text_with_space = format!("{} ", vtext.text);
-                                line_spans
-                                    .push(Span::styled(text_with_space.clone(), vtext.style));
-                                for _ in text_with_space.chars() {
-                                    content_view_map.push(None);
-                                }
+                                push_span_with_map(
+                                    &mut line_spans,
+                                    &mut line_view_map,
+                                    text_with_space,
+                                    vtext.style,
+                                    None,
+                                );
                             }
                         }
                     }
@@ -1093,10 +1128,13 @@ impl SplitRenderer {
                                 style.add_modifier.contains(Modifier::REVERSED)
                             );
                         }
-                        line_spans.push(Span::styled(display_char.to_string(), style));
-                        for _ in display_char.chars() {
-                            content_view_map.push(Some(view_idx));
-                        }
+                        push_span_with_map(
+                            &mut line_spans,
+                            &mut line_view_map,
+                            display_char.to_string(),
+                            style,
+                            Some(view_idx),
+                        );
                     }
 
                     // Check for AfterChar virtual texts at this position
@@ -1108,11 +1146,13 @@ impl SplitRenderer {
                             {
                                 // Add spacing: " hint_text" after the character
                                 let text_with_space = format!(" {}", vtext.text);
-                                line_spans
-                                    .push(Span::styled(text_with_space.clone(), vtext.style));
-                                for _ in text_with_space.chars() {
-                                    content_view_map.push(None);
-                                }
+                                push_span_with_map(
+                                    &mut line_spans,
+                                    &mut line_view_map,
+                                    text_with_space,
+                                    vtext.style,
+                                    None,
+                                );
                             }
                         }
                     }
@@ -1140,7 +1180,13 @@ impl SplitRenderer {
                                     .fg(theme.editor_fg)
                                     .bg(theme.inactive_cursor)
                             };
-                            line_spans.push(Span::styled(" ", cursor_style));
+                            push_span_with_map(
+                                &mut line_spans,
+                                &mut line_view_map,
+                                " ".to_string(),
+                                cursor_style,
+                                None,
+                            );
                         }
                         // Primary cursor on newline will be shown by terminal hardware cursor (active split only)
                     }
@@ -1198,8 +1244,13 @@ impl SplitRenderer {
                                 .fg(theme.editor_fg)
                                 .bg(theme.inactive_cursor)
                         };
-                        line_spans.push(Span::styled(" ", cursor_style));
-                        content_view_map.push(None);
+                        push_span_with_map(
+                            &mut line_spans,
+                            &mut line_view_map,
+                            " ".to_string(),
+                            cursor_style,
+                            None,
+                        );
                     }
                     // Primary cursor at end of line will be shown by terminal hardware cursor (active split only)
                 }
@@ -1230,67 +1281,15 @@ impl SplitRenderer {
 
                 // Extract only the content spans (skip gutter spans)
                 let content_spans = &line_spans[gutter_span_count..];
-
-                // Extract text from content spans only (not gutter) for wrapping
-                let line_text: String = content_spans.iter().map(|s| s.content.as_ref()).collect();
-                let line_view_map = content_view_map.clone();
-
-                // Wrap the line using the clean transformation
-                let segments = wrap_line(&line_text, &config);
-
-                // Check if primary cursor is on this line and calculate its position
-                // Use line_content.len() (original line length) not line_text.len() (scrolled length)
-                // to ensure we capture cursor even when it's past the horizontal scroll offset.
-                //
-                // For the upper bound check:
-                // - If line ends with newline, cursor AT the newline belongs to next line (use <)
-                // - If line has no newline, cursor can be at end of line (use <=)
-                let line_len_chars = line_content.chars().count();
-                let line_end_exclusive = if line_len_chars > 0 {
-                    line_view_offset + line_len_chars.saturating_sub(1)
+                let line_text: String =
+                    content_spans.iter().map(|s| s.content.as_ref()).collect();
+                let content_view_map = if line_view_map.len() > gutter_char_count {
+                    line_view_map[gutter_char_count..].to_vec()
                 } else {
-                    line_view_offset
+                    Vec::new()
                 };
 
-                let line_start_pos = line_view_offset;
-
-                if !cursor_found
-                    && primary_cursor_position >= line_start_pos
-                    && primary_cursor_position <= line_end_exclusive
-                {
-                    let display_len = line_text.chars().count();
-                    let mut column = primary_cursor_position.saturating_sub(line_view_offset);
-                    if column > display_len {
-                        column = display_len;
-                    }
-
-                    // For no-wrap mode with horizontal scrolling:
-                    // segments were created from line_text (already scrolled), so we need to
-                    // adjust column to be relative to the scrolled portion before calling
-                    // char_position_to_segment, and NOT subtract left_col again afterward
-                    let (segment_idx, col_in_segment) = if !line_wrap {
-                        // Adjust column to be relative to scrolled text
-                        let scrolled_column = column.saturating_sub(left_col);
-                        char_position_to_segment(scrolled_column, &segments)
-                    } else {
-                        // For wrapped mode, column is already correct
-                        char_position_to_segment(column, &segments)
-                    };
-
-                    // Calculate virtual text width before cursor position on this line
-                    // This accounts for inlay hints that shift the visual cursor position
-                    // Note: add 1 for the padding space we add during rendering
-                    let virtual_text_offset: usize = 0;
-
-                    // Cursor screen position relative to this line's rendered segments
-                    // Note: cursor_screen_x is the column in the text content, NOT including
-                    // the line number gutter (which gets added later at hardware cursor setting)
-                    cursor_screen_x = (col_in_segment + virtual_text_offset) as u16;
-
-                    // lines_rendered is 1-indexed (incremented before processing), but cursor position needs to be 0-indexed
-                    cursor_screen_y = (lines_rendered - 1 + segment_idx) as u16;
-                    cursor_found = true;
-                }
+                let segments = wrap_line(&line_text, &config);
 
                 // Render each wrapped segment
                 for (seg_idx, segment) in segments.iter().enumerate() {
@@ -1302,7 +1301,13 @@ impl SplitRenderer {
                         segment_spans.extend_from_slice(&line_spans[..gutter_span_count]);
                     } else {
                         // Continuation lines get spaces in the gutter area
-                        segment_spans.push(Span::raw(" ".repeat(gutter_width)));
+                        push_span_with_map(
+                            &mut segment_spans,
+                            &mut line_view_map,
+                            " ".repeat(gutter_width),
+                            Style::default(),
+                            None,
+                        );
                     }
 
                     // Note: horizontal scrolling is already applied when building line_spans
@@ -1326,9 +1331,9 @@ impl SplitRenderer {
                             continue;
                         }
                         if let Some(Some(view_idx)) =
-                            line_view_map.get(segment.start_char_offset + i)
+                            content_view_map.get(segment.start_char_offset + i)
                         {
-                            let screen_x = gutter_width as u16 + i as u16;
+                            let screen_x = i as u16;
                             view_to_screen.entry(*view_idx).or_insert((screen_x, current_y));
                         }
                     }
@@ -1359,7 +1364,9 @@ impl SplitRenderer {
         // The loop above only iterates over existing lines, but if cursor is at the very end
         // of the buffer after a newline, it represents a new empty line that needs to be rendered
         // with its margin/gutter
-        if !cursor_found && primary_cursor_position == state.buffer.len() {
+        if !view_to_screen.contains_key(&primary_cursor_position)
+            && primary_cursor_position == state.buffer.len()
+        {
             // Check if buffer ends with newline (creating an implicit empty last line)
             let buffer_ends_with_newline = if state.buffer.len() > 0 {
                 let last_char = state.get_text_range(state.buffer.len() - 1, state.buffer.len());
@@ -1427,17 +1434,9 @@ impl SplitRenderer {
             };
         }
 
-        // Fallback: if we still did not map the cursor during rendering, use view->screen map
-        if !cursor_found {
-            if let Some(pos) = view_to_screen.get(&primary_cursor_position) {
-                cursor_screen_x = pos.0;
-                cursor_screen_y = pos.1;
-            } else if let Some(view_idx) = source_to_view.get(&state.cursors.primary().position) {
-                if let Some(pos) = view_to_screen.get(view_idx) {
-                    cursor_screen_x = pos.0;
-                    cursor_screen_y = pos.1;
-                }
-            }
+        if let Some(pos) = view_to_screen.get(&primary_cursor_position) {
+            cursor_screen_x = pos.0;
+            cursor_screen_y = pos.1;
         }
 
         while lines.len() < render_area.height as usize {
