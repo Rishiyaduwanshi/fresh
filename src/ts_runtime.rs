@@ -2980,11 +2980,15 @@ impl TypeScriptPluginManager {
                 buffer_id,
                 position,
                 text,
+                affected_line_start,
+                affected_line_end,
             } => {
                 serde_json::json!({
                     "buffer_id": buffer_id.0,
                     "position": position,
                     "text": text,
+                    "affected_line_start": affected_line_start,
+                    "affected_line_end": affected_line_end,
                 })
             }
             HookArgs::BeforeDelete { buffer_id, range } => {
@@ -2998,12 +3002,16 @@ impl TypeScriptPluginManager {
                 buffer_id,
                 range,
                 deleted_text,
+                affected_line_start,
+                lines_deleted,
             } => {
                 serde_json::json!({
                     "buffer_id": buffer_id.0,
                     "start": range.start,
                     "end": range.end,
                     "deleted_text": deleted_text,
+                    "affected_line_start": affected_line_start,
+                    "lines_deleted": lines_deleted,
                 })
             }
             HookArgs::BeforeFileOpen { path } => {

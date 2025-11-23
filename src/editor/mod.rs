@@ -256,9 +256,10 @@ pub struct Editor {
     /// TypeScript plugin thread handle
     ts_plugin_manager: Option<PluginThreadHandle>,
 
-    /// Track which lines have been seen per buffer (for lines_changed optimization)
-    /// Maps buffer_id -> set of line numbers that have been processed
-    seen_lines: HashMap<BufferId, std::collections::HashSet<usize>>,
+    /// Track which byte ranges have been seen per buffer (for lines_changed optimization)
+    /// Maps buffer_id -> set of (byte_start, byte_end) ranges that have been processed
+    /// Using byte ranges instead of line numbers makes this agnostic to line number shifts
+    seen_byte_ranges: HashMap<BufferId, std::collections::HashSet<(usize, usize)>>,
 
     /// Named panel IDs mapping (for idempotent panel operations)
     /// Maps panel ID (e.g., "diagnostics") to buffer ID
@@ -539,7 +540,7 @@ impl Editor {
             cached_layout: CachedLayout::default(),
             command_registry,
             ts_plugin_manager,
-            seen_lines: HashMap::new(),
+            seen_byte_ranges: HashMap::new(),
             panel_ids: HashMap::new(),
             search_history: {
                 // Load search history from disk if available
@@ -1158,7 +1159,7 @@ impl Editor {
 
         self.buffers.remove(&id);
         self.event_logs.remove(&id);
-        self.seen_lines.remove(&id);
+        self.seen_byte_ranges.remove(&id);
 
         // Remove buffer from panel_ids mapping if it was a panel buffer
         // This prevents stale entries when the same panel_id is reused later
@@ -1805,14 +1806,28 @@ impl Editor {
         // Convert event to hook args and fire the appropriate hook
         let hook_args = match event {
             Event::Insert { position, text, .. } => {
-                // Clear seen_lines for this buffer so lines get re-processed
-                self.seen_lines.remove(&buffer_id);
+                let insert_position = *position;
+                let insert_len = text.len();
+
+                // Invalidate byte ranges that overlap with the insertion point
+                // After insert, content at insert_position has changed, so any range
+                // containing this position needs re-processing
+                if let Some(seen) = self.seen_byte_ranges.get_mut(&buffer_id) {
+                    // Ranges containing the insert position are invalidated
+                    // Ranges after the insert position have shifted - their start/end positions
+                    // are now stale, so we remove them too (they'll be re-added with correct positions)
+                    seen.retain(|&(start, end)| end <= insert_position);
+                }
+
                 Some((
                     "after-insert",
                     crate::hooks::HookArgs::AfterInsert {
                         buffer_id,
                         position: *position,
                         text: text.clone(),
+                        // Pass byte range info instead of line numbers
+                        affected_line_start: insert_position,
+                        affected_line_end: insert_position + insert_len,
                     },
                 ))
             }
@@ -1821,14 +1836,24 @@ impl Editor {
                 deleted_text,
                 ..
             } => {
-                // Clear seen_lines for this buffer so lines get re-processed
-                self.seen_lines.remove(&buffer_id);
+                let delete_start = range.start;
+
+                // Invalidate byte ranges that overlap with the deletion range
+                // After delete, content at delete_start has changed (different content now there)
+                // Ranges after the delete have shifted positions
+                if let Some(seen) = self.seen_byte_ranges.get_mut(&buffer_id) {
+                    seen.retain(|&(start, end)| end <= delete_start);
+                }
+
                 Some((
                     "after-delete",
                     crate::hooks::HookArgs::AfterDelete {
                         buffer_id,
                         range: range.clone(),
                         deleted_text: deleted_text.clone(),
+                        // Pass byte range info
+                        affected_line_start: delete_start,
+                        lines_deleted: deleted_text.len(),
                     },
                 ))
             }

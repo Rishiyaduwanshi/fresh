@@ -40,6 +40,10 @@ pub enum HookArgs {
         buffer_id: BufferId,
         position: usize,
         text: String,
+        /// Line number where the insert started (0-based)
+        affected_line_start: usize,
+        /// Line number where the insert ended (0-based, inclusive)
+        affected_line_end: usize,
     },
 
     /// Before text is deleted
@@ -53,6 +57,10 @@ pub enum HookArgs {
         buffer_id: BufferId,
         range: Range<usize>,
         deleted_text: String,
+        /// Line number where the delete occurred (0-based)
+        affected_line_start: usize,
+        /// Number of lines that were deleted
+        lines_deleted: usize,
     },
 
     /// Cursor moved to a new position
