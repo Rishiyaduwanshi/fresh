@@ -362,10 +362,15 @@ globalThis.onViewTransformRequest = function(args: {
   viewport_end: number;
   tokens: ViewTokenWire[];
 }): void {
+  editor.debug(`view_transform_request: buffer_id=${args.buffer_id}, blameState.bufferId=${blameState.bufferId}, isOpen=${blameState.isOpen}`);
+
   // Only transform our blame buffer
   if (args.buffer_id !== blameState.bufferId || !blameState.isOpen) {
+    editor.debug(`view_transform_request: skipping (buffer mismatch or not open)`);
     return;
   }
+
+  editor.debug(`view_transform_request: processing viewport ${args.viewport_start}-${args.viewport_end}, ${blameState.blocks.length} blocks`);
 
   const transformed: ViewTokenWire[] = [];
   const processedBlocks = new Set<string>();
@@ -376,23 +381,45 @@ globalThis.onViewTransformRequest = function(args: {
     // Check if block overlaps with viewport
     if (block.endByte > args.viewport_start && block.startByte < args.viewport_end) {
       blocksInViewport.push(block);
+      editor.debug(`Block in viewport: hash=${block.shortHash}, startByte=${block.startByte}, endByte=${block.endByte}`);
     }
   }
+  editor.debug(`Total blocks in viewport: ${blocksInViewport.length}, tokens: ${args.tokens.length}`);
 
   // Process tokens and inject headers
+  // We need to inject a header when:
+  // 1. We encounter a token at the exact start of a block (byteOffset === block.startByte)
+  // 2. OR the block starts before the viewport but extends into it (first visible token of that block)
+
   let lastByteOffset: number | null = null;
+
+  // Debug: log first few tokens
+  for (let i = 0; i < Math.min(5, args.tokens.length); i++) {
+    const t = args.tokens[i];
+    editor.debug(`Token[${i}]: source_offset=${t.source_offset}, kind=${JSON.stringify(t.kind)}`);
+  }
 
   for (const token of args.tokens) {
     const byteOffset = token.source_offset;
 
-    // Check if we're entering a new block
+    // Check if we need to inject headers before this token
     if (byteOffset !== null && byteOffset !== lastByteOffset) {
       for (const block of blocksInViewport) {
-        // Inject header at the start of each block
-        if (byteOffset === block.startByte && !processedBlocks.has(block.hash + block.startByte)) {
-          processedBlocks.add(block.hash + block.startByte);
+        const blockKey = block.hash + block.startByte;
 
+        // Inject header if:
+        // 1. This token is at the exact start of the block, OR
+        // 2. This token is the first visible token within this block
+        //    (block started before viewport, so header wasn't shown yet)
+        const isBlockStart = byteOffset === block.startByte;
+        const isFirstVisibleInBlock = byteOffset >= block.startByte &&
+                                       byteOffset < block.endByte &&
+                                       block.startByte < args.viewport_start;
+
+        if ((isBlockStart || isFirstVisibleInBlock) && !processedBlocks.has(blockKey)) {
           const headerText = formatBlockHeader(block);
+          editor.debug(`INJECT: block=${block.shortHash}, byteOffset=${byteOffset}, headerText="${headerText.substring(0, 40)}..."`);
+          processedBlocks.add(blockKey);
 
           // Add header token (source_offset: null = no line number)
           transformed.push({
@@ -427,7 +454,14 @@ globalThis.onViewTransformRequest = function(args: {
   }
 
   // Submit the transformed view
-  editor.submitViewTransform(
+  editor.debug(`Submitting view transform: original=${args.tokens.length} tokens, transformed=${transformed.length} tokens`);
+  // Log first 5 transformed tokens
+  for (let i = 0; i < Math.min(5, transformed.length); i++) {
+    const t = transformed[i];
+    const kindStr = typeof t.kind === 'string' ? t.kind : `Text:"${(t.kind as {Text:string}).Text.substring(0, 30)}"`;
+    editor.debug(`OUT[${i}]: source_offset=${t.source_offset}, kind=${kindStr}`);
+  }
+  const result = editor.submitViewTransform(
     args.buffer_id,
     args.split_id,
     args.viewport_start,
@@ -435,6 +469,7 @@ globalThis.onViewTransformRequest = function(args: {
     transformed,
     null // no layout hints
   );
+  editor.debug(`submitViewTransform result: ${result}`);
 };
 
 // Register for the view transform hook

@@ -129,6 +129,9 @@ pub struct FlattenedView {
     /// Mapping from view position to token style (for injected content styling)
     /// Only populated for characters from tokens with explicit styles
     pub style_mapping: Vec<Option<crate::plugin_api::ViewTokenStyle>>,
+    /// Set of view positions that are Break tokens (synthetic line breaks from wrapping)
+    /// Used to distinguish wrapped continuations from lines after injected headers
+    pub break_positions: std::collections::HashSet<usize>,
 }
 
 /// Build a view string and source mapping from a wire token list
@@ -141,6 +144,7 @@ pub fn flatten_tokens(tokens: &[crate::plugin_api::ViewTokenWire]) -> FlattenedV
     let mut mapping: Vec<Option<usize>> = Vec::new();
     let mut style_mapping: Vec<Option<crate::plugin_api::ViewTokenStyle>> = Vec::new();
     let mut tab_starts = std::collections::HashSet::new();
+    let mut break_positions = std::collections::HashSet::new();
     let mut col: usize = 0; // Current column position, reset on newlines
 
     for token in tokens {
@@ -188,6 +192,8 @@ pub fn flatten_tokens(tokens: &[crate::plugin_api::ViewTokenWire]) -> FlattenedV
                 col += 1;
             }
             crate::plugin_api::ViewTokenWireKind::Break => {
+                // Record position of Break token before adding it
+                break_positions.insert(view_text.len());
                 view_text.push('\n');
                 // Break tokens are synthetic, always have None mapping
                 mapping.push(None);
@@ -202,6 +208,7 @@ pub fn flatten_tokens(tokens: &[crate::plugin_api::ViewTokenWire]) -> FlattenedV
         mapping,
         tab_starts,
         style_mapping,
+        break_positions,
     }
 }
 

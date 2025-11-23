@@ -15,6 +15,7 @@ pub mod split_rendering;
 pub mod status_bar;
 pub mod suggestions;
 pub mod tabs;
+pub mod view_pipeline;
 
 // Re-export main types for convenience
 pub use file_explorer::FileExplorerRenderer;

@@ -10,7 +10,7 @@ use crate::split::SplitManager;
 use crate::state::{EditorState, ViewMode};
 use crate::text_buffer::Buffer;
 use crate::ui::tabs::TabsRenderer;
-use crate::view::flatten_tokens;
+use crate::ui::view_pipeline::{LineStart, ViewLine, ViewLineIterator, should_show_line_number};
 use crate::virtual_text::VirtualTextPosition;
 use ratatui::layout::Rect;
 use ratatui::style::{Color, Modifier, Style};
@@ -36,19 +36,10 @@ fn push_span_with_map(
     spans.push(Span::styled(text, style));
 }
 
-struct ViewLine {
-    offset: usize,
-    text: String,
-    ends_with_newline: bool,
-}
-
+/// Processed view data containing display lines from the view pipeline
 struct ViewData {
-    mapping: Vec<Option<usize>>,
+    /// Display lines with all token information preserved
     lines: Vec<ViewLine>,
-    /// View positions that are the START of a tab expansion (first space of expanded tab)
-    tab_starts: HashSet<usize>,
-    /// Token styles for each view position (for injected content like annotation headers)
-    style_mapping: Vec<Option<crate::plugin_api::ViewTokenStyle>>,
 }
 
 struct ViewAnchor {
@@ -106,12 +97,8 @@ struct ViewPreferences {
 struct LineRenderInput<'a> {
     state: &'a EditorState,
     theme: &'a crate::theme::Theme,
+    /// Display lines from the view pipeline (each line has its own mappings, styles, etc.)
     view_lines: &'a [ViewLine],
-    view_mapping: &'a [Option<usize>],
-    /// View positions that are the START of a tab expansion (for cursor positioning and tab indicator)
-    tab_starts: &'a HashSet<usize>,
-    /// Token styles for each view position (for injected content styling)
-    style_mapping: &'a [Option<crate::plugin_api::ViewTokenStyle>],
     view_anchor: ViewAnchor,
     render_area: Rect,
     gutter_width: usize,
@@ -579,15 +566,11 @@ impl SplitRenderer {
             tokens = Self::apply_wrapping_transform(tokens, content_width, gutter_width);
         }
 
-        // Convert tokens to text + mapping
-        let flattened = flatten_tokens(&tokens);
+        // Convert tokens to display lines using the view pipeline
+        // Each ViewLine preserves LineStart info for correct line number rendering
+        let lines: Vec<ViewLine> = ViewLineIterator::new(&tokens).collect();
 
-        ViewData {
-            lines: Self::build_view_lines(&flattened.text),
-            mapping: flattened.mapping,
-            tab_starts: flattened.tab_starts,
-            style_mapping: flattened.style_mapping,
-        }
+        ViewData { lines }
     }
 
     fn build_base_tokens(
@@ -786,67 +769,38 @@ impl SplitRenderer {
         wrapped
     }
 
-    fn build_view_lines(view_text: &str) -> Vec<ViewLine> {
-        let mut view_lines: Vec<ViewLine> = Vec::new();
-        let mut offset = 0usize;
-        for segment in view_text.split_inclusive('\n') {
-            let text = segment.to_string(); // keep newline so indices stays aligned
-            let ends_with_newline = text.ends_with('\n');
-            view_lines.push(ViewLine {
-                offset,
-                text,
-                ends_with_newline,
-            });
-            offset += segment.chars().count();
-        }
-        if view_text.is_empty() {
-            view_lines.push(ViewLine {
-                offset: 0,
-                text: String::new(),
-                ends_with_newline: false,
-            });
-        }
-        view_lines
-    }
-
-    fn calculate_view_anchor(
-        view_lines: &[ViewLine],
-        view_mapping: &[Option<usize>],
-        top_byte: usize,
-    ) -> ViewAnchor {
-        // Find the first position where source_offset >= top_byte
-        let first_source_pos = view_mapping
-            .iter()
-            .position(|m| m.map_or(false, |s| s >= top_byte));
-
-        // Calculate view_top: the position in view space where we should start rendering
-        let view_top = match first_source_pos {
-            Some(pos) => {
-                // Walk backwards from the first source-mapped position to include
-                // any injected content (source_offset: None) that precedes it.
-                // This ensures headers injected before source content are visible.
-                let mut start = pos;
-                while start > 0 && view_mapping[start - 1].is_none() {
-                    start -= 1;
-                }
-                start
-            }
-            None => 0,
-        };
-
-        let mut view_start_line_idx = 0usize;
-        let mut view_start_line_skip = 0usize;
+    fn calculate_view_anchor(view_lines: &[ViewLine], top_byte: usize) -> ViewAnchor {
+        // Find the first line that contains source content at or after top_byte
+        // Walk backwards to include any injected content (headers) that precede it
         for (idx, line) in view_lines.iter().enumerate() {
-            let len = line.text.chars().count();
-            if view_top >= line.offset && view_top <= line.offset + len {
-                view_start_line_idx = idx;
-                view_start_line_skip = view_top.saturating_sub(line.offset);
-                break;
+            // Check if this line has source content at or after top_byte
+            if let Some(first_source) = line.char_mappings.iter().find_map(|m| *m) {
+                if first_source >= top_byte {
+                    // Found a line with source >= top_byte
+                    // But we may need to include previous lines if they're injected headers
+                    let mut start_idx = idx;
+                    while start_idx > 0 {
+                        let prev_line = &view_lines[start_idx - 1];
+                        // If previous line is all injected (no source mappings), include it
+                        let prev_has_source = prev_line.char_mappings.iter().any(|m| m.is_some());
+                        if !prev_has_source {
+                            start_idx -= 1;
+                        } else {
+                            break;
+                        }
+                    }
+                    return ViewAnchor {
+                        start_line_idx: start_idx,
+                        start_line_skip: 0,
+                    };
+                }
             }
         }
+
+        // No matching source found, start from beginning
         ViewAnchor {
-            start_line_idx: view_start_line_idx,
-            start_line_skip: view_start_line_skip,
+            start_line_idx: 0,
+            start_line_skip: 0,
         }
     }
 
@@ -1048,9 +1002,6 @@ impl SplitRenderer {
             state,
             theme,
             view_lines,
-            view_mapping,
-            tab_starts,
-            style_mapping,
             view_anchor,
             render_area,
             gutter_width,
@@ -1087,79 +1038,56 @@ impl SplitRenderer {
 
         // Track cursor position during rendering (eliminates duplicate line iteration)
         let mut last_visible_x: u16 = 0;
-        let mut view_start_line_skip = view_anchor.start_line_skip;
+        let _view_start_line_skip = view_anchor.start_line_skip; // Currently unused
 
         // Track the current source line number separately from display lines
         let mut current_source_line_num = starting_line_num;
 
         loop {
-            let (line_view_offset, line_content, line_has_newline) = if let Some(ViewLine {
-                offset,
-                text,
-                ends_with_newline,
-            }) =
-                view_lines.get(view_iter_idx)
-            {
-                let mut content = text.clone();
-                let mut base = *offset;
-                if view_iter_idx == view_anchor.start_line_idx && view_start_line_skip > 0 {
-                    let skip = view_start_line_skip;
-                    content = text.chars().skip(skip).collect();
-                    base += skip;
-                    view_start_line_skip = 0;
-                }
-                view_iter_idx += 1;
-                (base, content, *ends_with_newline)
+            // Get the current ViewLine from the pipeline
+            let current_view_line = if let Some(vl) = view_lines.get(view_iter_idx) {
+                vl
             } else if is_empty_buffer && lines_rendered == 0 {
-                (0, String::new(), false)
+                // Handle empty buffer case - create a minimal line
+                static EMPTY_LINE: std::sync::OnceLock<ViewLine> = std::sync::OnceLock::new();
+                EMPTY_LINE.get_or_init(|| ViewLine {
+                    text: String::new(),
+                    char_mappings: Vec::new(),
+                    char_styles: Vec::new(),
+                    tab_starts: HashSet::new(),
+                    line_start: LineStart::Beginning,
+                    ends_with_newline: false,
+                })
             } else {
                 break;
             };
+
+            // Extract line data
+            let line_content = current_view_line.text.clone();
+            let line_has_newline = current_view_line.ends_with_newline;
+            let line_char_mappings = &current_view_line.char_mappings;
+            let line_char_styles = &current_view_line.char_styles;
+            let line_tab_starts = &current_view_line.tab_starts;
+            let _line_start_type = current_view_line.line_start; // Available for future use
+
+            view_iter_idx += 1;
 
             if lines_rendered >= visible_line_count {
                 break;
             }
 
-            // Determine line type for line number rendering:
-            // 1. Normal source line: first char has source_offset: Some(...) AND prev newline had Some(...)
-            // 2. Wrapped continuation: first char has source_offset: Some(...) BUT prev newline had None (Break)
-            // 3. Injected line: first char has source_offset: None (header/annotation)
-            //
-            // For line numbers:
-            // - Normal source line: show line number, increment counter
-            // - Wrapped continuation: show blank (same logical line), don't increment
-            // - Injected line: show blank (not a source line), don't increment
-            let first_char_has_source = view_mapping
-                .get(line_view_offset)
-                .map(|m| m.is_some())
-                .unwrap_or(false);
+            // Use the elegant pipeline's should_show_line_number function
+            // This correctly handles: injected content, wrapped continuations, and source lines
+            let show_line_number = should_show_line_number(current_view_line);
 
-            let prev_newline_has_source = if line_view_offset > 0 {
-                view_mapping
-                    .get(line_view_offset - 1)
-                    .map(|m| m.is_some())
-                    .unwrap_or(false)
-            } else {
-                true // First line counts as having a "previous" source
-            };
-
-            // This is a continuation if: prev newline was None AND current content is real source
-            // (meaning this is a wrapped line, not after an injected header)
-            let is_continuation = !prev_newline_has_source && first_char_has_source;
-
-            // This is an injected line if the first char has no source mapping
-            let is_injected_line = !first_char_has_source;
-
-            // Only increment source line number for normal source lines (not continuations or injected)
-            // A line is a new source line if: it has source content AND prev newline had source
-            let is_new_source_line = first_char_has_source && prev_newline_has_source && lines_rendered > 0;
-            if is_new_source_line {
+            // Only increment source line number when we're at a new source line
+            // A line is a new source line if it should show a line number and isn't the first line
+            if show_line_number && lines_rendered > 0 {
                 current_source_line_num += 1;
             }
 
-            // For rendering purposes, treat both injected and continuation lines as "continuation"
-            // (both show blank line numbers)
-            let is_continuation = is_continuation || is_injected_line;
+            // is_continuation means "don't show line number" for rendering purposes
+            let is_continuation = !show_line_number;
 
             lines_rendered += 1;
 
@@ -1269,8 +1197,8 @@ impl SplitRenderer {
 
             let mut chars_iterator = line_content.chars().peekable();
             while let Some(ch) = chars_iterator.next() {
-                let view_idx = line_view_offset + col_offset;
-                let byte_pos = view_mapping.get(view_idx).copied().flatten();
+                // Use per-line mappings instead of global view_mapping
+                let byte_pos = line_char_mappings.get(col_offset).copied().flatten();
 
                 // Process character through ANSI parser first
                 // If it returns None, the character is part of an escape sequence and should be skipped
@@ -1316,7 +1244,7 @@ impl SplitRenderer {
                 // Skip characters before left_column
                 if col_offset >= left_col as usize {
                     // Check if this view position is the START of a tab expansion
-                    let is_tab_start = tab_starts.contains(&view_idx);
+                    let is_tab_start = line_tab_starts.contains(&col_offset);
 
                     // Check if this character is at a cursor position
                     // For tab expansions: only show cursor on the FIRST space (the tab_start position)
@@ -1328,8 +1256,8 @@ impl SplitRenderer {
                             }
                             // If this byte maps to a tab character, only show cursor at tab_start
                             // Check if this is part of a tab expansion by looking at surrounding positions
-                            let prev_view_idx = view_idx.saturating_sub(1);
-                            let prev_byte_pos = view_mapping.get(prev_view_idx).copied().flatten();
+                            let prev_col_offset = col_offset.saturating_sub(1);
+                            let prev_byte_pos = line_char_mappings.get(prev_col_offset).copied().flatten();
                             // Show cursor if: this is start of line, OR previous char had different byte pos
                             col_offset == 0 || prev_byte_pos != Some(bp)
                         })
@@ -1371,7 +1299,7 @@ impl SplitRenderer {
 
                     // Build style by layering: token style -> ansi -> syntax -> semantic -> overlays -> selection
                     // First check for explicit token style (for injected annotations)
-                    let token_style = style_mapping.get(view_idx).and_then(|s| s.as_ref());
+                    let token_style = line_char_styles.get(col_offset).and_then(|s| s.as_ref());
 
                     // Start with token style if present (for injected content like annotation headers)
                     // Otherwise use ANSI/syntax/theme default
@@ -1580,13 +1508,13 @@ impl SplitRenderer {
             if !line_has_newline {
                 let line_len_chars = line_content.chars().count();
 
-                // Map view positions to buffer positions using view_mapping
-                let last_char_view_idx = line_view_offset + line_len_chars.saturating_sub(1);
-                let after_last_char_view_idx = line_view_offset + line_len_chars;
+                // Map view positions to buffer positions using per-line char_mappings
+                let last_char_idx = line_len_chars.saturating_sub(1);
+                let after_last_char_idx = line_len_chars;
 
-                let last_char_buf_pos = view_mapping.get(last_char_view_idx).copied().flatten();
-                let after_last_char_buf_pos = view_mapping
-                    .get(after_last_char_view_idx)
+                let last_char_buf_pos = line_char_mappings.get(last_char_idx).copied().flatten();
+                let after_last_char_buf_pos = line_char_mappings
+                    .get(after_last_char_idx)
                     .copied()
                     .flatten();
 
@@ -1687,21 +1615,21 @@ impl SplitRenderer {
                 } else {
                     last_visible_x.saturating_add(1)
                 };
-                let view_end_idx = line_view_offset + line_content.chars().count();
+                let line_len_chars = line_content.chars().count();
 
                 last_line_end = Some(LastLineEnd {
                     pos: (end_x, y),
                     terminated_with_newline: line_has_newline,
                 });
 
-                if line_has_newline && line_content.chars().count() > 0 {
-                    let newline_idx = view_end_idx.saturating_sub(1);
-                    if let Some(Some(src_newline)) = view_mapping.get(newline_idx) {
+                if line_has_newline && line_len_chars > 0 {
+                    let newline_idx = line_len_chars.saturating_sub(1);
+                    if let Some(Some(src_newline)) = line_char_mappings.get(newline_idx) {
                         if *src_newline == primary_cursor_position {
                             // Cursor position now includes gutter width (consistent with main cursor tracking)
                             // For empty lines (just newline), cursor should be at gutter width (after gutter)
                             // For lines with content, cursor on newline should be after the content
-                            if line_content.chars().count() == 1 {
+                            if line_len_chars == 1 {
                                 // Empty line - just the newline character
                                 cursor_screen_x = gutter_width as u16;
                                 cursor_screen_y = y;
@@ -1760,11 +1688,9 @@ impl SplitRenderer {
                 lines.push(Line::from(implicit_line_spans));
                 lines_rendered += 1;
 
-                // Update last_line_end for the implicit line
-                last_line_end = Some(LastLineEnd {
-                    pos: (gutter_width as u16, implicit_y),
-                    terminated_with_newline: false,
-                });
+                // NOTE: We intentionally do NOT update last_line_end here.
+                // The implicit empty line is a visual display aid, not an actual content line.
+                // last_line_end should track the last actual content line for cursor placement logic.
 
                 // If primary cursor is at EOF (after the newline), set cursor on this line
                 if primary_cursor_position == state.buffer.len() && !have_cursor {
@@ -1871,11 +1797,7 @@ impl SplitRenderer {
             render_area.width as usize,
             gutter_width,
         );
-        let view_anchor = Self::calculate_view_anchor(
-            &view_data.lines,
-            &view_data.mapping,
-            state.viewport.top_byte,
-        );
+        let view_anchor = Self::calculate_view_anchor(&view_data.lines, state.viewport.top_byte);
         Self::render_compose_margins(frame, area, &compose_layout, &view_mode, theme);
 
         let selection = Self::selection_context(state);
@@ -1923,9 +1845,6 @@ impl SplitRenderer {
             state,
             theme,
             view_lines: &view_data.lines,
-            view_mapping: &view_data.mapping,
-            tab_starts: &view_data.tab_starts,
-            style_mapping: &view_data.style_mapping,
             view_anchor,
             render_area,
             gutter_width,
@@ -2145,8 +2064,7 @@ mod tests {
             render_area.width as usize,
             gutter_width,
         );
-        let view_anchor =
-            SplitRenderer::calculate_view_anchor(&view_data.lines, &view_data.mapping, 0);
+        let view_anchor = SplitRenderer::calculate_view_anchor(&view_data.lines, 0);
 
         let estimated_lines = (state.buffer.len() / 80).max(1);
         state.margins.update_width_for_buffer(estimated_lines);
@@ -2174,9 +2092,6 @@ mod tests {
             state: &state,
             theme: &Theme::default(),
             view_lines: &view_data.lines,
-            view_mapping: &view_data.mapping,
-            tab_starts: &view_data.tab_starts,
-            style_mapping: &view_data.style_mapping,
             view_anchor,
             render_area,
             gutter_width,
@@ -2773,97 +2688,11 @@ mod tests {
             "Cursor moved to the newline on line 0"
         );
     }
-
-    // =========================================================================
-    // View Transform Tests - Injected tokens at byte 0
-    // =========================================================================
-
-    /// Test that calculate_view_anchor correctly handles injected tokens at byte 0.
-    ///
-    /// When a view transform injects a header (with source_offset: None) BEFORE
-    /// content at byte 0, the anchor calculation should NOT skip over the header.
-    ///
-    /// Bug: The current implementation looks for the first mapping >= top_byte,
-    /// but tokens with source_offset: None return false from map_or, so they're skipped.
-    #[test]
-    fn calculate_view_anchor_includes_injected_header_at_byte_zero() {
-        // Simulate a view transform that injects a header before content at byte 0:
-        // Position 0-21: "== HEADER AT BYTE 0 ==" (source_offset: None)
-        // Position 22: newline (source_offset: None)
-        // Position 23-28: "Line 1" (source_offset: Some(0))
-        // Position 29: newline (source_offset: Some(6))
-        // Position 30-35: "Line 2" (source_offset: Some(7))
-
-        let view_lines = vec![
-            ViewLine {
-                offset: 0,
-                text: "== HEADER AT BYTE 0 ==\n".to_string(),
-                ends_with_newline: true,
-            },
-            ViewLine {
-                offset: 23,
-                text: "Line 1\n".to_string(),
-                ends_with_newline: true,
-            },
-            ViewLine {
-                offset: 30,
-                text: "Line 2\n".to_string(),
-                ends_with_newline: true,
-            },
-        ];
-
-        // Mapping: first 23 chars have None (injected), then Some(0..6), then Some(7..13)
-        let mut view_mapping: Vec<Option<usize>> = Vec::new();
-        // Header + newline: 23 chars with None
-        for _ in 0..23 {
-            view_mapping.push(None);
-        }
-        // "Line 1\n": 7 chars mapping to bytes 0-6
-        for i in 0..7 {
-            view_mapping.push(Some(i));
-        }
-        // "Line 2\n": 7 chars mapping to bytes 7-13
-        for i in 7..14 {
-            view_mapping.push(Some(i));
-        }
-
-        // When viewport starts at byte 0, the anchor should start at view position 0
-        // (showing the header), NOT at view position 23 (skipping the header)
-        let anchor = SplitRenderer::calculate_view_anchor(&view_lines, &view_mapping, 0);
-
-        // BUG: Current implementation finds view_top=23 (first position with source_offset >= 0)
-        // This causes start_line_skip=23, skipping the entire header!
-        //
-        // EXPECTED: start_line_idx=0, start_line_skip=0 (show the header from the beginning)
-        assert_eq!(
-            anchor.start_line_idx, 0,
-            "start_line_idx should be 0 (first line)"
-        );
-        // THIS IS THE KEY BUG: start_line_skip should be 0 to show the header
-        // Currently it's 23, which skips the entire header text
-        assert_eq!(
-            anchor.start_line_skip, 0,
-            "BUG: View anchor skips {} chars in first line (the entire header)!\n\
-             When top_byte=0 and injected content exists before byte 0,\n\
-             start_line_skip should be 0 to show the injected header.\n\
-             The bug is in calculate_view_anchor: it finds the first source-mapped\n\
-             position (23) and uses that as view_top, skipping all injected content.",
-            anchor.start_line_skip
-        );
-    }
-
-    /// Test that build_view_lines correctly handles view text with injected content
-    #[test]
-    fn build_view_lines_handles_injected_header() {
-        let view_text = "== HEADER ==\nLine 1\nLine 2\n";
-        let lines = SplitRenderer::build_view_lines(view_text);
-
-        assert_eq!(lines.len(), 3);
-        assert_eq!(lines[0].text, "== HEADER ==\n");
-        assert_eq!(lines[0].offset, 0);
-        assert_eq!(lines[1].text, "Line 1\n");
-        assert_eq!(lines[1].offset, 13); // "== HEADER ==\n" = 13 chars
-        assert_eq!(lines[2].text, "Line 2\n");
-        assert_eq!(lines[2].offset, 20); // 13 + 7 = 20
-    }
+    // NOTE: Tests for view transform header handling have been moved to src/ui/view_pipeline.rs
+    // where the elegant token-based pipeline properly handles these cases.
+    // The view_pipeline tests cover:
+    // - test_simple_source_lines
+    // - test_wrapped_continuation
+    // - test_injected_header_then_source
+    // - test_mixed_scenario
 }
