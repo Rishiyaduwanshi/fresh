@@ -2,6 +2,7 @@
 
 use crate::common::git_test_helper::{DirGuard, GitTestRepo};
 use crate::common::harness::EditorTestHarness;
+use crate::common::tracing::init_tracing_from_env;
 use crossterm::event::{KeyCode, KeyModifiers};
 use fresh::config::Config;
 
@@ -1423,6 +1424,8 @@ fn trigger_git_blame(harness: &mut EditorTestHarness) {
 /// Test git blame opens and shows blame blocks with headers
 #[test]
 fn test_git_blame_shows_blocks_with_headers() {
+    init_tracing_from_env();
+
     let repo = GitTestRepo::new();
     repo.setup_typical_project();
     repo.setup_git_blame_plugin();
@@ -1452,13 +1455,18 @@ fn test_git_blame_shows_blocks_with_headers() {
     // Trigger git blame
     trigger_git_blame(&mut harness);
 
-    // Wait until git blame view appears (logical event)
-    // The view transform injects header lines with ── above each blame block
-    harness.wait_until(|h| {
+    // Wait until git blame view appears (logical event) with timeout
+    let blame_appeared = harness.wait_for_async(|h| {
         let screen = h.screen_to_string();
         // Should show block headers with ── (commit info injected via view transform)
         screen.contains("──") && screen.contains("Initial commit")
-    }).unwrap();
+    }, 5000).unwrap();
+
+    if !blame_appeared {
+        let screen = harness.screen_to_string();
+        println!("TIMEOUT: Git blame view did not show headers. Current screen:\n{screen}");
+        panic!("Blame headers (──) not found after 5 seconds");
+    }
 
     let screen = harness.screen_to_string();
     println!("Git blame screen:\n{screen}");
@@ -1842,10 +1850,16 @@ fn test_git_blame_scroll_to_bottom() {
     // Trigger git blame
     trigger_git_blame(&mut harness);
 
-    // Wait until blame view appears
-    harness.wait_until(|h| {
+    // Wait until blame view appears (with timeout and debug output)
+    let blame_appeared = harness.wait_for_async(|h| {
         h.screen_to_string().contains("──")
-    }).unwrap();
+    }, 5000).unwrap();
+
+    if !blame_appeared {
+        let screen = harness.screen_to_string();
+        println!("TIMEOUT waiting for blame view. Current screen:\n{screen}");
+        panic!("Blame view did not appear within timeout");
+    }
 
     let screen_top = harness.screen_to_string();
     println!("Git blame at top:\n{screen_top}");
@@ -1879,6 +1893,107 @@ fn test_git_blame_scroll_to_bottom() {
     assert!(
         screen_bottom.contains("content"),
         "Should still show file content properly after scrolling"
+    );
+}
+
+// =============================================================================
+// View Transform Tests - Minimal reproduction of byte 0 header bug
+// =============================================================================
+
+/// Helper to trigger test view marker via command palette
+fn trigger_test_view_marker(harness: &mut EditorTestHarness) {
+    harness
+        .send_key(KeyCode::Char('p'), KeyModifiers::CONTROL)
+        .unwrap();
+    harness.render().unwrap();
+    harness.type_text("Test View Marker").unwrap();
+    harness
+        .send_key(KeyCode::Enter, KeyModifiers::NONE)
+        .unwrap();
+    harness.render().unwrap();
+}
+
+/// MINIMAL REPRODUCTION: View transform header at byte 0 should be visible
+///
+/// This is the simplest possible test for the bug described in docs/BLAME.md:
+/// - A view transform injects a header at byte offset 0
+/// - The header text should be visible on screen
+/// - Currently, the header row exists (blank gutter) but text is empty
+///
+/// Expected screen output:
+/// ```
+///       │ == HEADER AT BYTE 0 ==    <- Row 1: blank gutter (no line num), header text
+///     1 │ Line 1                    <- Row 2: line 1
+///     2 │ Line 2                    <- Row 3: line 2
+///     3 │ Line 3                    <- Row 4: line 3
+/// ```
+///
+/// Actual buggy output:
+/// ```
+///       │                           <- Row 1: blank gutter, EMPTY content (BUG!)
+///       │ Line 1                    <- Row 2: blank gutter (wrong! should be line 1)
+///     2 │ Line 2                    <- Row 3: line 2
+///     3 │ Line 3                    <- Row 4: line 3
+/// ```
+#[test]
+fn test_view_transform_header_at_byte_zero() {
+    init_tracing_from_env();
+
+    let repo = GitTestRepo::new();
+
+    // Create a simple file (just for the plugins directory setup)
+    repo.create_file("test.txt", "placeholder");
+    repo.git_add(&["test.txt"]);
+    repo.git_commit("Initial commit");
+    repo.setup_test_view_marker_plugin();
+
+    let mut harness = EditorTestHarness::with_config_and_working_dir(
+        120,
+        40,
+        Config::default(),
+        repo.path.clone(),
+    )
+    .unwrap();
+
+    // Open the test file (needed to have a split to put our virtual buffer in)
+    let file_path = repo.path.join("test.txt");
+    harness.open_file(&file_path).unwrap();
+
+    // Wait for file to load
+    harness.wait_until(|h| {
+        !h.get_buffer_content().is_empty()
+    }).unwrap();
+
+    // Trigger the test view marker command
+    trigger_test_view_marker(&mut harness);
+
+    // Wait for the virtual buffer to be created
+    let buffer_created = harness.wait_for_async(|h| {
+        let screen = h.screen_to_string();
+        screen.contains("Test view marker active") || screen.contains("*test-view-marker*")
+    }, 5000).unwrap();
+
+    if !buffer_created {
+        let screen = harness.screen_to_string();
+        panic!("Virtual buffer was not created within timeout. Screen:\n{screen}");
+    }
+
+    // Wait a bit more for the view transform to be applied
+    let header_appeared = harness.wait_for_async(|h| {
+        let screen = h.screen_to_string();
+        screen.contains("HEADER AT BYTE 0")
+    }, 5000).unwrap();
+
+    let screen_after = harness.screen_to_string();
+    println!("Screen after view marker:\n{screen_after}");
+
+    // CRITICAL ASSERTION: The header text should be visible
+    assert!(
+        header_appeared,
+        "BUG: View transform header at byte 0 is not visible!\n\
+         Expected to see 'HEADER AT BYTE 0' on screen.\n\
+         This reproduces the bug where headers injected at startByte=0 have empty text.\n\
+         Screen:\n{screen_after}"
     );
 }
 
@@ -1924,10 +2039,16 @@ fn test_git_blame_original_buffer_not_decorated() {
     // Trigger git blame
     trigger_git_blame(&mut harness);
 
-    // Wait until blame view appears
-    harness.wait_until(|h| {
+    // Wait until blame view appears (with timeout and debug output)
+    let blame_appeared = harness.wait_for_async(|h| {
         h.screen_to_string().contains("──")
-    }).unwrap();
+    }, 5000).unwrap();
+
+    if !blame_appeared {
+        let screen = harness.screen_to_string();
+        println!("TIMEOUT waiting for blame view. Current screen:\n{screen}");
+        panic!("Blame view did not appear within timeout");
+    }
 
     let screen_with_blame = harness.screen_to_string();
     println!("Screen with blame:\n{screen_with_blame}");
@@ -1941,11 +2062,17 @@ fn test_git_blame_original_buffer_not_decorated() {
     // Close blame with q
     harness.send_key(KeyCode::Char('q'), KeyModifiers::NONE).unwrap();
 
-    // Wait until we're back to original file
-    harness.wait_until(|h| {
+    // Wait until we're back to original file (with timeout)
+    let back_to_original = harness.wait_for_async(|h| {
         let screen = h.screen_to_string();
         screen.contains("fn main") && !screen.contains("──")
-    }).unwrap();
+    }, 5000).unwrap();
+
+    if !back_to_original {
+        let screen = harness.screen_to_string();
+        println!("TIMEOUT waiting to return to original file. Current screen:\n{screen}");
+        panic!("Did not return to original file within timeout");
+    }
 
     let screen_after_close = harness.screen_to_string();
     println!("Screen after closing blame:\n{screen_after_close}");

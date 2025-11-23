@@ -317,6 +317,25 @@ A sample project for testing.
             panic!("Failed to copy git_blame.ts from {:?}: {}", git_blame_src, e)
         });
     }
+
+    /// Set up test view marker plugin for debugging view transforms
+    pub fn setup_test_view_marker_plugin(&self) {
+        // Create plugins directory in the test repo
+        let plugins_dir = self.path.join("plugins");
+        fs::create_dir_all(&plugins_dir).expect("Failed to create plugins directory");
+
+        // Get the project root
+        let project_root = std::env::var("CARGO_MANIFEST_DIR")
+            .map(PathBuf::from)
+            .expect("CARGO_MANIFEST_DIR not set");
+
+        // Copy test_view_marker.ts plugin
+        let src = project_root.join("plugins/test_view_marker.ts");
+        let dst = plugins_dir.join("test_view_marker.ts");
+        fs::copy(&src, &dst).unwrap_or_else(|e| {
+            panic!("Failed to copy test_view_marker.ts from {:?}: {}", src, e)
+        });
+    }
 }
 
 /// Helper to restore original directory
