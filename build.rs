@@ -11,6 +11,16 @@ fn main() {
     println!("cargo::rerun-if-changed=src/ts_runtime.rs");
     println!("cargo::rerun-if-changed=types/fresh.d.ts.template");
 
+    // Skip type generation during cargo publish (files should be pre-committed)
+    // DOCS_RS is set when building on docs.rs
+    // We also check if we're in a package verification context by looking for the target/package path
+    let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").unwrap_or_default();
+    let is_publish_verify = manifest_dir.contains("target/package");
+
+    if is_publish_verify || std::env::var("DOCS_RS").is_ok() {
+        return;
+    }
+
     if let Err(e) = generate_typescript_types() {
         eprintln!("Warning: Failed to generate TypeScript types: {}", e);
     }
