@@ -29,6 +29,14 @@ pub enum SplitDirection {
     Vertical,
 }
 
+/// View-position for cursor movement events (view coords with optional source mapping)
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ViewEventPosition {
+    pub view_line: usize,
+    pub column: usize,
+    pub source_byte: Option<usize>,
+}
+
 /// Core event types representing all possible state changes
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Event {
@@ -49,26 +57,26 @@ pub enum Event {
     /// Move a cursor to a new position
     MoveCursor {
         cursor_id: CursorId,
-        old_position: usize,
-        new_position: usize,
-        old_anchor: Option<usize>,
-        new_anchor: Option<usize>,
-        old_sticky_column: usize,
-        new_sticky_column: usize,
+        old_position: ViewEventPosition,
+        new_position: ViewEventPosition,
+        old_anchor: Option<ViewEventPosition>,
+        new_anchor: Option<ViewEventPosition>,
+        old_sticky_column: Option<usize>,
+        new_sticky_column: Option<usize>,
     },
 
     /// Add a new cursor
     AddCursor {
         cursor_id: CursorId,
-        position: usize,
-        anchor: Option<usize>,
+        position: ViewEventPosition,
+        anchor: Option<ViewEventPosition>,
     },
 
     /// Remove a cursor (stores cursor state for undo)
     RemoveCursor {
         cursor_id: CursorId,
-        position: usize,
-        anchor: Option<usize>,
+        position: ViewEventPosition,
+        anchor: Option<ViewEventPosition>,
     },
 
     /// Scroll the viewport
@@ -87,7 +95,7 @@ pub enum Event {
     /// Set the anchor (selection start) for a cursor
     SetAnchor {
         cursor_id: CursorId,
-        position: usize,
+        position: ViewEventPosition,
     },
 
     /// Clear the anchor and reset deselect_on_move for a cursor
@@ -95,7 +103,6 @@ pub enum Event {
     ClearAnchor {
         cursor_id: CursorId,
     },
-
     /// Change mode (if implementing modal editing)
     ChangeMode {
         mode: String,

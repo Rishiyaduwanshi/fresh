@@ -2152,7 +2152,8 @@ fn test_view_transform_scroll_with_many_virtual_lines() {
         .wait_for_async(
             |h| {
                 let screen = h.screen_to_string();
-                screen.contains("Test view marker active") || screen.contains("*test-view-marker-many*")
+                screen.contains("Test view marker active")
+                    || screen.contains("*test-view-marker-many*")
             },
             5000,
         )

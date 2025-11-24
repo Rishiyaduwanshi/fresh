@@ -217,9 +217,11 @@ impl SplitRenderer {
 
                         // Ensure primary cursor is visible within layout coordinates
                         let primary_cursor = *state.cursors.primary();
-                        view_state
-                            .viewport
-                            .ensure_visible_in_layout(&primary_cursor, &layout, gutter_width);
+                        view_state.viewport.ensure_visible_in_layout(
+                            &primary_cursor,
+                            &layout,
+                            gutter_width,
+                        );
 
                         state.viewport = view_state.viewport.clone();
                         layout_override = Some(layout);

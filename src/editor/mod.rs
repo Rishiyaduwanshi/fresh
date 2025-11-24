@@ -4205,12 +4205,6 @@ impl Editor {
                 view_state.view_transform = Some(payload);
                 view_state.layout = None;
                 view_state.layout_dirty = true;
-                // Reset viewport to top when view transform is applied
-                // This ensures injected header lines are visible, rather than
-                // scrolling to the cursor's source position in the transformed view
-                view_state.viewport.top_view_line = 0;
-                view_state.viewport.top_byte = 0;
-                view_state.viewport.anchor_byte = 0;
             }
             PluginCommand::ClearViewTransform {
                 buffer_id,

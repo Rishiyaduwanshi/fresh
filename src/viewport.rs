@@ -154,15 +154,19 @@ impl Viewport {
     /// * `cursor` - The cursor to ensure is visible
     /// * `layout` - The current layout with view lines
     /// * `gutter_width` - Width of the gutter (line numbers), for horizontal scroll calculation
-    pub fn ensure_visible_in_layout(&mut self, cursor: &Cursor, layout: &Layout, gutter_width: usize) {
+    pub fn ensure_visible_in_layout(
+        &mut self,
+        cursor: &Cursor,
+        layout: &Layout,
+        gutter_width: usize,
+    ) {
         if layout.lines.is_empty() {
             return;
         }
 
         let viewport_height = self.visible_line_count().max(1);
-        let (cursor_line, visual_col) = layout
-            .source_byte_to_view_position(cursor.position)
-            .unwrap_or((0, 0));
+        let cursor_line = cursor.position.view_line;
+        let visual_col = cursor.position.column;
 
         // Vertical scrolling
         let max_top = layout.max_top_line(viewport_height);
@@ -216,7 +220,8 @@ impl Viewport {
 
                 // Limit left_column to ensure content is always visible
                 if line_length > 0 {
-                    let max_left_column = line_length.saturating_sub(visible_width.saturating_sub(1));
+                    let max_left_column =
+                        line_length.saturating_sub(visible_width.saturating_sub(1));
                     if self.left_column > max_left_column {
                         self.left_column = max_left_column;
                     }

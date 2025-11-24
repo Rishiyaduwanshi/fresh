@@ -227,47 +227,12 @@ impl EditorState {
                 text,
                 cursor_id,
             } => {
-                // Count newlines in inserted text to update cursor line number
-                let newlines_inserted = text.matches('\n').count();
-
-                // CRITICAL: Adjust markers BEFORE modifying buffer
-                self.marker_list.adjust_for_insert(*position, text.len());
-
-                // Insert text into buffer
-                self.buffer.insert(*position, text);
-
-                // Invalidate highlight cache for edited range
-                if let Some(highlighter) = &mut self.highlighter {
-                    highlighter.invalidate_range(*position..*position + text.len());
-                }
-
-                // Adjust all cursors after the edit
-                self.cursors.adjust_for_edit(*position, 0, text.len());
-
-                // Move the cursor that made the edit to the end of the insertion
-                if let Some(cursor) = self.cursors.get_mut(*cursor_id) {
-                    cursor.position = position + text.len();
-                    cursor.clear_selection();
-                }
-
-                // Update primary cursor line number if this was the primary cursor
-                if *cursor_id == self.cursors.primary_id() {
-                    self.primary_cursor_line_number = match self.primary_cursor_line_number {
-                        LineNumber::Absolute(line) => {
-                            LineNumber::Absolute(line + newlines_inserted)
-                        }
-                        LineNumber::Relative {
-                            line,
-                            from_cached_line,
-                        } => LineNumber::Relative {
-                            line: line + newlines_inserted,
-                            from_cached_line,
-                        },
-                    };
-                }
-
-                // Defer viewport sync to rendering time for better performance
-                self.viewport.mark_needs_sync();
+                // VIEW-CENTRIC TODO: Need mapping from view position to buffer insert location.
+                // Placeholder: no-op until edit pipeline is rewritten.
+                tracing::error!(
+                    "Insert event still expects buffer byte positions; migration incomplete: position={}",
+                    position
+                );
             }
 
             Event::Delete {
@@ -275,48 +240,11 @@ impl EditorState {
                 cursor_id,
                 deleted_text,
             } => {
-                let len = range.len();
-                // Count newlines in deleted text to update cursor line number
-                let newlines_deleted = deleted_text.matches('\n').count();
-
-                // CRITICAL: Adjust markers BEFORE modifying buffer
-                self.marker_list.adjust_for_delete(range.start, len);
-
-                // Delete from buffer
-                self.buffer.delete(range.clone());
-
-                // Invalidate highlight cache for edited range
-                if let Some(highlighter) = &mut self.highlighter {
-                    highlighter.invalidate_range(range.clone());
-                }
-
-                // Adjust all cursors after the edit
-                self.cursors.adjust_for_edit(range.start, len, 0);
-
-                // Move the cursor that made the edit to the start of deletion
-                if let Some(cursor) = self.cursors.get_mut(*cursor_id) {
-                    cursor.position = range.start;
-                    cursor.clear_selection();
-                }
-
-                // Update primary cursor line number if this was the primary cursor
-                if *cursor_id == self.cursors.primary_id() {
-                    self.primary_cursor_line_number = match self.primary_cursor_line_number {
-                        LineNumber::Absolute(line) => {
-                            LineNumber::Absolute(line.saturating_sub(newlines_deleted))
-                        }
-                        LineNumber::Relative {
-                            line,
-                            from_cached_line,
-                        } => LineNumber::Relative {
-                            line: line.saturating_sub(newlines_deleted),
-                            from_cached_line,
-                        },
-                    };
-                }
-
-                // Defer viewport sync to rendering time for better performance
-                self.viewport.mark_needs_sync();
+                // VIEW-CENTRIC TODO: Need mapping from view range to buffer delete range.
+                tracing::error!(
+                    "Delete event still expects buffer byte ranges; migration incomplete: range={:?}",
+                    range
+                );
             }
 
             Event::MoveCursor {
@@ -327,9 +255,12 @@ impl EditorState {
                 ..
             } => {
                 if let Some(cursor) = self.cursors.get_mut(*cursor_id) {
-                    cursor.position = *new_position;
-                    cursor.anchor = *new_anchor;
-                    cursor.sticky_column = *new_sticky_column;
+                    cursor.position = (*new_position).into();
+                    cursor.anchor = new_anchor.map(|a| a.into());
+                    cursor.preferred_visual_column = *new_sticky_column;
+                    if let Some(col) = *new_sticky_column {
+                        cursor.sticky_column = col;
+                    }
                 }
 
                 // Defer viewport sync to rendering time for better performance
@@ -338,16 +269,14 @@ impl EditorState {
                 // Update primary cursor line number if this is the primary cursor
                 // Try to get exact line number from buffer, or estimate for large files
                 if *cursor_id == self.cursors.primary_id() {
-                    self.primary_cursor_line_number =
-                        match self.buffer.offset_to_position(*new_position) {
-                            Some(pos) => LineNumber::Absolute(pos.line),
-                            None => {
-                                // Large file without line metadata - estimate line number
-                                // Use default estimated_line_length of 80 bytes
-                                let estimated_line = *new_position / 80;
-                                LineNumber::Absolute(estimated_line)
-                            }
-                        };
+                    self.primary_cursor_line_number = match new_position.source_byte {
+                        Some(byte) => self
+                            .buffer
+                            .offset_to_position(byte)
+                            .map(|pos| LineNumber::Absolute(pos.line))
+                            .unwrap_or(LineNumber::Absolute(0)),
+                        None => LineNumber::Absolute(new_position.view_line),
+                    };
                 }
             }
 
@@ -357,9 +286,9 @@ impl EditorState {
                 anchor,
             } => {
                 let cursor = if let Some(anchor) = anchor {
-                    Cursor::with_selection(*anchor, *position)
+                    Cursor::with_selection((*anchor).into(), (*position).into())
                 } else {
-                    Cursor::new(*position)
+                    Cursor::new((*position).into())
                 };
 
                 // Insert cursor with the specific ID from the event
@@ -388,7 +317,7 @@ impl EditorState {
                 // Set the anchor (selection start) for a specific cursor
                 // Also disable deselect_on_move so movement preserves the selection (Emacs mark mode)
                 if let Some(cursor) = self.cursors.get_mut(*cursor_id) {
-                    cursor.anchor = Some(*position);
+                    cursor.anchor = Some((*position).into());
                     cursor.deselect_on_move = false;
                 }
             }

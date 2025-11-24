@@ -314,7 +314,8 @@ impl SplitViewState {
         // Keep viewport in sync with the primary cursor
         if let Some(primary) = self.cursors.iter().next().map(|(_, c)| *c) {
             if let Some(layout) = self.layout.as_ref() {
-                self.viewport.ensure_visible_in_layout(&primary, layout, gutter_width);
+                self.viewport
+                    .ensure_visible_in_layout(&primary, layout, gutter_width);
             }
         }
 
