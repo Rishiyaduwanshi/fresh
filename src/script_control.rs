@@ -689,7 +689,7 @@ impl ScriptControlMode {
     /// Handle status command
     fn handle_status(&mut self) -> io::Result<ScriptResponse> {
         let state = self.editor.active_state();
-        let cursor_position = state.cursors.primary().position;
+        let cursor_position = state.cursors.primary().position.source_byte.unwrap_or(0);
         let cursor_count = state.cursors.count();
         let has_selection = !state.cursors.primary().collapsed();
         let buffer_len = state.buffer.len();

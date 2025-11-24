@@ -2,6 +2,7 @@
 
 use crate::ansi_background::AnsiBackground;
 use crate::cursor::Cursor;
+use crate::plugin_api::ViewTokenWire;
 use crate::editor::BufferMetadata;
 use crate::event::{BufferId, EventLog, SplitDirection, SplitId};
 use crate::plugin_api::ViewTransformPayload;
@@ -23,6 +24,7 @@ struct ViewData {
     lines: Vec<ViewLine>,
 }
 
+#[derive(Clone, Copy)]
 struct ViewAnchor {
     start_line_idx: usize,
     start_line_skip: usize,
@@ -294,6 +296,29 @@ impl SplitRenderer {
         (vec![buffer_id], 0)
     }
 
+    /// Stub: Temporarily set split state for rendering
+    /// TODO: Implement proper split state management
+    fn temporary_split_state(
+        _state: &mut EditorState,
+        _split_view_states: Option<&HashMap<SplitId, crate::split::SplitViewState>>,
+        _split_id: SplitId,
+        _is_active: bool,
+    ) -> () {
+        // This is a stub - split state is already managed via SplitViewState
+    }
+
+    /// Stub: Apply wrapping transform to tokens
+    /// TODO: Implement proper line wrapping
+    pub fn apply_wrapping_transform(
+        tokens: Vec<ViewTokenWire>,
+        _content_width: usize,
+        _gutter_width: usize,
+    ) -> Vec<ViewTokenWire> {
+        // Stub implementation - return tokens unchanged
+        // Real implementation would apply line wrapping
+        tokens
+    }
+
     fn resolve_view_preferences(
         state: &EditorState,
         split_view_states: Option<&HashMap<SplitId, crate::split::SplitViewState>>,
@@ -389,16 +414,17 @@ impl SplitRenderer {
             } else {
                 "      │ ".to_string()
             };
+            let gutter_len = gutter.len();  // Save length before moving
             let mut spans = vec![Span::styled(
                 gutter,
                 Style::default()
-                    .fg(input.theme.gutter_fg)
-                    .bg(input.theme.gutter_bg),
+                    .fg(input.theme.line_number_fg)
+                    .bg(input.theme.line_number_bg),
             )];
 
             spans.push(Span::styled(
                 view_line.text.clone(),
-                Style::default().fg(input.theme.text_fg),
+                Style::default().fg(input.theme.editor_fg),
             ));
 
             let line = Line::from(spans);
@@ -416,7 +442,7 @@ impl SplitRenderer {
 
             last_line_end = Some(LastLineEnd {
                 pos: (
-                    (gutter.len() + view_line.text.len()) as u16,
+                    (gutter_len + view_line.text.len()) as u16,
                     idx as u16 + input.render_area.y,
                 ),
                 terminated_with_newline: view_line.ends_with_newline,

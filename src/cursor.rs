@@ -75,6 +75,17 @@ impl std::ops::SubAssign<usize> for ViewPosition {
     }
 }
 
+impl ViewPosition {
+    /// Construct a view position from a source byte (view coordinates unknown during migration)
+    pub fn from_source_byte(byte: usize) -> Self {
+        Self {
+            view_line: 0,
+            column: byte,
+            source_byte: Some(byte),
+        }
+    }
+}
+
 /// Position in 2D coordinates (for block selection)
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Position2D {

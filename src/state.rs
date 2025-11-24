@@ -314,7 +314,7 @@ impl EditorState {
                     cursor.anchor = new_anchor.map(|a| a.into());
                     cursor.preferred_visual_column = *new_sticky_column;
                     if let Some(col) = *new_sticky_column {
-                        cursor.sticky_column = col;
+                        cursor.sticky_column = Some(col);
                     }
                 }
 
@@ -808,6 +808,32 @@ impl EditorState {
             Ok(String::new())
         }
     }
+}
+
+/// Stub: Adjust cursor positions after an insert operation
+/// TODO: Implement proper view-centric cursor adjustment
+fn adjust_cursors_for_insert(
+    _cursors: &mut crate::cursor::Cursors,
+    _start: ViewEventPosition,
+    _text: &str,
+) {
+    // The byte-level adjustment is already done via cursors.adjust_for_edit() in the insert handler.
+    // This function is for any additional view-level adjustments needed.
+    // For now, byte-level adjustment is sufficient.
+    tracing::trace!("adjust_cursors_for_insert: view-level adjustment stub");
+}
+
+/// Stub: Adjust cursor positions after a delete operation
+/// TODO: Implement proper view-centric cursor adjustment
+fn adjust_cursors_for_delete(
+    _cursors: &mut crate::cursor::Cursors,
+    _range: &ViewEventRange,
+    _deleted_text: &str,
+) {
+    // The byte-level adjustment is already done via cursors.adjust_for_edit() in the delete handler.
+    // This function is for any additional view-level adjustments needed.
+    // For now, byte-level adjustment is sufficient.
+    tracing::trace!("adjust_cursors_for_delete: view-level adjustment stub");
 }
 
 /// Implement DocumentModel trait for EditorState

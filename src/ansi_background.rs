@@ -83,6 +83,18 @@ impl AnsiBackground {
             blend_channel(fg_rgb.2, bg_rgb.2, opacity),
         ))
     }
+
+    /// Stub: Render background to frame
+    /// TODO: Implement proper ANSI background rendering
+    pub fn render_background(
+        &self,
+        _frame: &mut ratatui::Frame,
+        _area: ratatui::layout::Rect,
+        _fade: f32,
+    ) {
+        // Stub implementation - background rendering is handled elsewhere
+        // This can be filled in later for proper ANSI background support
+    }
 }
 
 fn blend_channel(fg: u8, bg: u8, opacity: f32) -> u8 {

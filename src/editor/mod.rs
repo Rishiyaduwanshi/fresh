@@ -42,6 +42,7 @@ use self::types::{
     MacroRecordingState, MouseState, SearchState,
 };
 use crate::async_bridge::{AsyncBridge, AsyncMessage};
+use crate::cursor::ViewPosition;
 use crate::buffer_mode::ModeRegistry;
 use crate::command_registry::CommandRegistry;
 use crate::commands::Suggestion;
@@ -2251,12 +2252,14 @@ impl Editor {
             // Ensure we have a layout
             let gutter_width = view_state.viewport.gutter_width(&buffer_state.buffer);
             let wrap_params = Some((view_state.viewport.width as usize, gutter_width));
-            let layout = view_state.ensure_layout(
-                &mut buffer_state.buffer,
-                self.config.editor.estimated_line_length,
-                wrap_params,
-            );
-            view_state.viewport.scroll_to(layout, top_line);
+            let layout = view_state
+                .ensure_layout(
+                    &mut buffer_state.buffer,
+                    self.config.editor.estimated_line_length,
+                    wrap_params,
+                )
+                .clone();
+            view_state.viewport.scroll_to(&layout, top_line);
         }
     }
 
@@ -4390,7 +4393,7 @@ impl Editor {
                 let state = self.active_state_mut();
                 let cursor_pos = state.cursors.primary().position;
                 let event = Event::Insert {
-                    position: cursor_pos,
+                    position: cursor_pos.into(),
                     text,
                     cursor_id: CursorId(0),
                 };
@@ -4606,7 +4609,8 @@ impl Editor {
 
                     // Ensure we don't go past the buffer end
                     let buffer_len = state.buffer.len();
-                    state.cursors.primary_mut().position = final_position.min(buffer_len);
+                    let byte_pos = final_position.min(buffer_len);
+                    state.cursors.primary_mut().position = ViewPosition::from_source_byte(byte_pos);
                     state.cursors.primary_mut().anchor = None;
 
                     // Ensure the position is visible
@@ -4667,7 +4671,8 @@ impl Editor {
 
                     // Ensure we don't go past the buffer end
                     let buffer_len = state.buffer.len();
-                    state.cursors.primary_mut().position = final_position.min(buffer_len);
+                    let byte_pos = final_position.min(buffer_len);
+                    state.cursors.primary_mut().position = ViewPosition::from_source_byte(byte_pos);
                     state.cursors.primary_mut().anchor = None;
 
                     // Ensure the position is visible in the viewport
@@ -5114,8 +5119,8 @@ impl Editor {
             PluginCommand::GetTextPropertiesAtCursor { buffer_id } => {
                 // Get text properties at cursor and fire a hook with the data
                 if let Some(state) = self.buffers.get(&buffer_id) {
-                    let cursor_pos = state.cursors.primary().position;
-                    let properties = state.text_properties.get_at(cursor_pos);
+                    let cursor_byte = state.cursors.primary().position.source_byte.unwrap_or(0);
+                    let properties = state.text_properties.get_at(cursor_byte);
                     tracing::debug!(
                         "Text properties at cursor in {:?}: {} properties found",
                         buffer_id,
@@ -5305,6 +5310,8 @@ impl Editor {
                 // Find all splits that display this buffer and update their view states
                 let splits = self.split_manager.splits_for_buffer(buffer_id);
                 let active_split = self.split_manager.active_split();
+                // Convert plugin byte position to ViewPosition
+                let view_pos = ViewPosition::from_source_byte(position);
 
                 tracing::debug!(
                     "SetBufferCursor: buffer_id={:?}, position={}, found {} splits: {:?}, active={:?}",
@@ -5326,7 +5333,7 @@ impl Editor {
 
                         if let Some(view_state) = self.split_view_states.get_mut(split_id) {
                             // Set cursor position in the split's view state
-                            view_state.cursors.primary_mut().move_to(position, false);
+                            view_state.cursors.primary_mut().move_to(view_pos, false);
                             // Ensure the cursor is visible by scrolling the split's viewport
                             let cursor = view_state.cursors.primary().clone();
                             view_state
@@ -5342,7 +5349,7 @@ impl Editor {
                             // For the active split, also update the buffer state directly
                             // (rendering uses buffer state for active split, split_view_states for others)
                             if is_active {
-                                state.cursors.primary_mut().move_to(position, false);
+                                state.cursors.primary_mut().move_to(view_pos, false);
                                 state.viewport = view_state.viewport.clone();
                             }
                         } else {
@@ -5409,11 +5416,19 @@ impl Editor {
                     let events: Vec<_> = deletions
                         .iter()
                         .rev()
-                        .map(|range| {
-                            let deleted_text = state.get_text_range(range.start, range.end);
+                        .map(|selection| {
+                            // Extract source bytes from ViewPosition
+                            let start_byte = selection.start.source_byte.unwrap_or(0);
+                            let end_byte = selection.end.source_byte.unwrap_or(0);
+                            let deleted_text = state.get_text_range(start_byte, end_byte);
+                            // Convert Selection to ViewEventRange
+                            let view_range = ViewEventRange::normalized(
+                                selection.start.into(),
+                                selection.end.into(),
+                            );
                             Event::Delete {
-                                range: range.clone(),
-                                source_range: None, // TODO: add proper source range mapping
+                                range: view_range,
+                                source_range: Some(start_byte..end_byte),
                                 deleted_text,
                                 cursor_id: primary_id,
                             }
@@ -5456,15 +5471,15 @@ impl Editor {
 
         // Get the partial word at cursor to filter completions
         use crate::word_navigation::find_completion_word_start;
-        let (word_start, cursor_pos) = {
+        let (word_start, cursor_byte) = {
             let state = self.active_state();
-            let cursor_pos = state.cursors.primary().position;
-            let word_start = find_completion_word_start(&state.buffer, cursor_pos);
-            (word_start, cursor_pos)
+            let cursor_byte = state.cursors.primary().position.source_byte.unwrap_or(0);
+            let word_start = find_completion_word_start(&state.buffer, cursor_byte);
+            (word_start, cursor_byte)
         };
-        let prefix = if word_start < cursor_pos {
+        let prefix = if word_start < cursor_byte {
             self.active_state_mut()
-                .get_text_range(word_start, cursor_pos)
+                .get_text_range(word_start, cursor_byte)
                 .to_lowercase()
         } else {
             String::new()
@@ -5613,7 +5628,7 @@ impl Editor {
                     old_anchor,
                     new_anchor: None,
                     old_sticky_column,
-                    new_sticky_column: 0, // Reset sticky column for goto definition
+                    new_sticky_column: Some(0), // Reset sticky column for goto definition
                 };
 
                 if let Some(state) = self.buffers.get_mut(&buffer_id) {
@@ -6534,7 +6549,7 @@ impl Editor {
                                     let deleted_text = state.get_text_range(start_pos, end_pos);
                                     let cursor_id = state.cursors.primary_id();
                                     let delete_event = Event::Delete {
-                                        range: start_pos..end_pos,
+                                        range: ViewEventRange::from_source_range(start_pos..end_pos),
                                         source_range: Some(start_pos..end_pos), // byte-based range
                                         deleted_text,
                                         cursor_id,
@@ -6549,7 +6564,7 @@ impl Editor {
                                     })?;
                                     let cursor_id = state.cursors.primary_id();
                                     let insert_event = Event::Insert {
-                                        position: start_pos,
+                                        position: ViewEventPosition::from_source_byte(start_pos),
                                         text: edit.new_text.clone(),
                                         cursor_id,
                                     };
@@ -6677,7 +6692,7 @@ impl Editor {
                                     let deleted_text = state.get_text_range(start_pos, end_pos);
                                     let cursor_id = state.cursors.primary_id();
                                     let delete_event = Event::Delete {
-                                        range: start_pos..end_pos,
+                                        range: ViewEventRange::from_source_range(start_pos..end_pos),
                                         source_range: Some(start_pos..end_pos), // byte-based range
                                         deleted_text,
                                         cursor_id,
@@ -6692,7 +6707,7 @@ impl Editor {
                                     })?;
                                     let cursor_id = state.cursors.primary_id();
                                     let insert_event = Event::Insert {
-                                        position: start_pos,
+                                        position: ViewEventPosition::from_source_byte(start_pos),
                                         text: edit.new_text.clone(),
                                         cursor_id,
                                     };
@@ -6766,8 +6781,8 @@ impl Editor {
             .buffers
             .get(&buffer_id)
             .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "Buffer not found"))?;
-        let original_cursor_pos = state.cursors.primary().position;
-        let original_cursor_anchor = state.cursors.primary().anchor;
+        let original_cursor_byte = state.cursors.primary().position.source_byte.unwrap_or(0);
+        let original_anchor_byte = state.cursors.primary().anchor.and_then(|a| a.source_byte);
 
         // Calculate cursor position adjustment based on edits
         // Edits are applied in reverse order (end of file to start), but we need
@@ -6776,22 +6791,28 @@ impl Editor {
         if let Event::Batch { events, .. } = &batch {
             for event in events {
                 match event {
-                    Event::Delete { range, .. } => {
-                        if range.end <= original_cursor_pos {
+                    Event::Delete { range, source_range, .. } => {
+                        // Use source_range if available, otherwise estimate from view range
+                        let (range_start, range_end) = source_range
+                            .as_ref()
+                            .map(|r| (r.start, r.end))
+                            .unwrap_or((range.start.source_byte.unwrap_or(0), range.end.source_byte.unwrap_or(0)));
+                        if range_end <= original_cursor_byte {
                             // Delete entirely before cursor - cursor moves back
-                            cursor_delta -= range.len() as isize;
-                        } else if range.start < original_cursor_pos {
+                            cursor_delta -= (range_end - range_start) as isize;
+                        } else if range_start < original_cursor_byte {
                             // Delete crosses cursor - cursor moves to start of delete
-                            cursor_delta = range.start as isize - original_cursor_pos as isize;
+                            cursor_delta = range_start as isize - original_cursor_byte as isize;
                         }
                         // Delete entirely after cursor - no effect
                     }
                     Event::Insert { position, text, .. } => {
                         // Only move cursor if insert is STRICTLY BEFORE cursor position
                         // If insert is AT cursor, cursor should stay at start of new text
+                        let pos_byte = position.source_byte.unwrap_or(0);
                         let adjusted_cursor =
-                            (original_cursor_pos as isize + cursor_delta) as usize;
-                        if *position < adjusted_cursor {
+                            (original_cursor_byte as isize + cursor_delta) as usize;
+                        if pos_byte < adjusted_cursor {
                             // Insert before cursor - cursor moves forward
                             cursor_delta += text.len() as isize;
                         }
@@ -6813,21 +6834,13 @@ impl Editor {
         // Restore cursor to adjusted position (view-based TODO: needs layout mapping).
         let buffer_len = state.buffer.len();
         let new_cursor_byte =
-            ((original_cursor_pos as isize + cursor_delta).max(0) as usize).min(buffer_len);
-        let new_cursor = crate::cursor::ViewPosition {
-            view_line: 0,
-            column: new_cursor_byte,
-            source_byte: Some(new_cursor_byte),
-        };
+            ((original_cursor_byte as isize + cursor_delta).max(0) as usize).min(buffer_len);
+        let new_cursor = crate::cursor::ViewPosition::from_source_byte(new_cursor_byte);
         state.cursors.primary_mut().position = new_cursor;
 
-        if let Some(anchor) = original_cursor_anchor {
-            let new_anchor_byte = ((anchor as isize + cursor_delta).max(0) as usize).min(buffer_len);
-            state.cursors.primary_mut().anchor = Some(crate::cursor::ViewPosition {
-                view_line: 0,
-                column: new_anchor_byte,
-                source_byte: Some(new_anchor_byte),
-            });
+        if let Some(anchor_byte) = original_anchor_byte {
+            let new_anchor_byte = ((anchor_byte as isize + cursor_delta).max(0) as usize).min(buffer_len);
+            state.cursors.primary_mut().anchor = Some(crate::cursor::ViewPosition::from_source_byte(new_anchor_byte));
         }
 
         // Notify LSP about the changes using pre-calculated positions
@@ -6925,11 +6938,11 @@ impl Editor {
         // Get the current buffer and cursor position
         let (word_start, word_end) = {
             let state = self.active_state();
-            let cursor_pos = state.cursors.primary().position;
+            let cursor_byte = state.cursors.primary().position.source_byte.unwrap_or(0);
 
             // Find the word boundaries
-            let word_start = find_word_start(&state.buffer, cursor_pos);
-            let word_end = find_word_end(&state.buffer, cursor_pos);
+            let word_start = find_word_start(&state.buffer, cursor_byte);
+            let word_end = find_word_end(&state.buffer, cursor_byte);
 
             // Check if we're on a word
             if word_start >= word_end {
@@ -6944,15 +6957,10 @@ impl Editor {
         let word_text = self.active_state_mut().get_text_range(word_start, word_end);
 
         // Create an overlay to highlight the symbol being renamed
-        let overlay_handle = self.add_overlay(
-            None,
-            word_start..word_end,
-            crate::event::OverlayFace::Background {
-                color: (50, 100, 200), // Blue background for rename
-            },
-            100,
-            Some("Renaming".to_string()),
-        );
+        // Note: overlay API is currently stubbed, create a placeholder handle
+        let overlay_handle = crate::overlay::OverlayHandle::new();
+        // TODO: Implement proper overlay when API is ready
+        // self.add_overlay(buffer_id, namespace, overlay_data);
 
         // Enter rename mode using the Prompt system
         // Store the rename metadata in the PromptType and pre-fill the input with the current name
@@ -6973,8 +6981,9 @@ impl Editor {
     }
 
     /// Cancel rename mode - removes overlay if the prompt was for LSP rename
-    fn cancel_rename_overlay(&mut self, handle: &crate::overlay::OverlayHandle) {
-        self.remove_overlay(handle.clone());
+    fn cancel_rename_overlay(&mut self, _handle: &crate::overlay::OverlayHandle) {
+        // TODO: Implement when overlay API is ready
+        // self.remove_overlay(buffer_id, namespace);
     }
 
     /// Perform the actual LSP rename request

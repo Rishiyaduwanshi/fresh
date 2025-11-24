@@ -201,14 +201,12 @@ impl SplitViewState {
         // Apply movement to view-state cursors so viewport visibility checks are accurate
         for (cursor_id, cursor) in cursor_snapshot {
             let mut layout_for_cursor = layout.clone();
+            // Extract source_byte for layout operations
+            let cursor_byte = cursor.position.source_byte.unwrap_or(0);
             if let Some((mut view_line, mut visual_col)) =
-                layout_for_cursor.source_byte_to_view_position(cursor.position)
+                layout_for_cursor.source_byte_to_view_position(cursor_byte)
             {
-                let mut goal_col = if cursor.sticky_column > 0 {
-                    cursor.sticky_column
-                } else {
-                    visual_col
-                };
+                let mut goal_col = cursor.sticky_column.filter(|&s| s > 0).unwrap_or(visual_col);
 
                 // If we're at the very top of the current layout but the source range
                 // starts after byte 0, expand upward so vertical movement can proceed.
@@ -227,15 +225,11 @@ impl SplitViewState {
                     layout = layout_for_cursor.clone();
 
                     if let Some((vl, vc)) =
-                        layout_for_cursor.source_byte_to_view_position(cursor.position)
+                        layout_for_cursor.source_byte_to_view_position(cursor_byte)
                     {
                         view_line = vl;
                         visual_col = vc;
-                        goal_col = if cursor.sticky_column > 0 {
-                            cursor.sticky_column
-                        } else {
-                            visual_col
-                        };
+                        goal_col = cursor.sticky_column.filter(|&s| s > 0).unwrap_or(visual_col);
                     }
                 }
 
@@ -255,16 +249,12 @@ impl SplitViewState {
                         .clone();
                     layout = layout_for_cursor.clone();
 
-                    if let Some((view_line, col)) =
-                        layout_for_cursor.source_byte_to_view_position(cursor.position)
+                    if let Some((vl, col)) =
+                        layout_for_cursor.source_byte_to_view_position(cursor_byte)
                     {
                         visual_col = col;
-                        goal_col = if cursor.sticky_column > 0 {
-                            cursor.sticky_column
-                        } else {
-                            visual_col
-                        };
-                        raw_target = (view_line as isize + delta)
+                        goal_col = cursor.sticky_column.filter(|&s| s > 0).unwrap_or(visual_col);
+                        raw_target = (vl as isize + delta)
                             .clamp(0, (layout_for_cursor.lines.len() as isize - 1).max(0));
                         target_view_line = raw_target as usize;
                     }
@@ -285,27 +275,34 @@ impl SplitViewState {
                     });
                 }
 
-                if let Some(new_pos) = new_position {
+                if let Some(new_pos_byte) = new_position {
                     let new_anchor = if cursor.deselect_on_move {
                         None
                     } else {
                         cursor.anchor
                     };
 
+                    // Create new position as ViewPosition (for cursor update) and ViewEventPosition (for event)
+                    let new_view_pos = crate::cursor::ViewPosition {
+                        view_line: target_view_line,
+                        column: goal_col,
+                        source_byte: Some(new_pos_byte),
+                    };
+
                     events.push(crate::event::Event::MoveCursor {
                         cursor_id,
-                        old_position: cursor.position,
-                        new_position: new_pos,
-                        old_anchor: cursor.anchor,
-                        new_anchor,
+                        old_position: cursor.position.into(),
+                        new_position: new_view_pos.into(),
+                        old_anchor: cursor.anchor.map(|a| a.into()),
+                        new_anchor: new_anchor.map(|a| a.into()),
                         old_sticky_column: cursor.sticky_column,
-                        new_sticky_column: goal_col,
+                        new_sticky_column: Some(goal_col),
                     });
 
                     if let Some(c) = self.cursors.get_mut(cursor_id) {
-                        c.position = new_pos;
+                        c.position = new_view_pos;
                         c.anchor = new_anchor;
-                        c.sticky_column = goal_col;
+                        c.sticky_column = Some(goal_col);
                     }
                 }
             }

@@ -58,6 +58,16 @@ impl std::fmt::Display for ViewEventPosition {
     }
 }
 
+impl From<crate::cursor::ViewPosition> for ViewEventPosition {
+    fn from(pos: crate::cursor::ViewPosition) -> Self {
+        Self {
+            view_line: pos.view_line,
+            column: pos.column,
+            source_byte: pos.source_byte,
+        }
+    }
+}
+
 impl ViewEventPosition {
     /// Construct a view position from a source byte (view coordinates unknown during migration)
     pub fn from_source_byte(byte: usize) -> Self {
@@ -88,16 +98,6 @@ impl ViewEventPosition {
             view_line: current_line,
             column: current_col,
             source_byte: pos.source_byte.map(|b| b.saturating_add(text.len())),
-        }
-    }
-}
-
-impl From<crate::cursor::ViewPosition> for ViewEventPosition {
-    fn from(pos: crate::cursor::ViewPosition) -> Self {
-        Self {
-            view_line: pos.view_line,
-            column: pos.column,
-            source_byte: pos.source_byte,
         }
     }
 }

@@ -182,10 +182,10 @@ pub fn action_to_events(
             for (id, _cursor) in cursors.iter() {
                 events.push(Event::MoveCursor {
                     cursor_id: id,
-                    old_position: view_pos_to_event(&first_pos),
-                    new_position: view_pos_to_event(&first_pos),
+                    old_position: view_pos_to_event(first_pos),
+                    new_position: view_pos_to_event(first_pos),
                     old_anchor: None,
-                    new_anchor: Some(view_pos_to_event(&last_pos)),
+                    new_anchor: Some(view_pos_to_event(last_pos)),
                     old_sticky_column: None,
                     new_sticky_column: Some(0),
                 });
@@ -207,10 +207,10 @@ pub fn action_to_events(
                 };
                 events.push(Event::MoveCursor {
                     cursor_id: id,
-                    old_position: view_pos_to_event(&cursor.position),
-                    new_position: view_pos_to_event(&line_start),
+                    old_position: view_pos_to_event(cursor.position),
+                    new_position: view_pos_to_event(line_start),
                     old_anchor: cursor.anchor.map(view_pos_to_event),
-                    new_anchor: Some(view_pos_to_event(&line_end)),
+                    new_anchor: Some(view_pos_to_event(line_end)),
                     old_sticky_column: cursor.preferred_visual_column,
                     new_sticky_column: Some(0),
                 });
@@ -240,7 +240,7 @@ pub fn action_to_events(
                         source_byte: layout.view_position_to_source_byte(line_idx, line_len),
                     }
                 };
-                let view_range = ViewEventRange::new(view_pos_to_event(&line_start), view_pos_to_event(&next_line_start));
+                let view_range = ViewEventRange::new(view_pos_to_event(line_start), view_pos_to_event(next_line_start));
                 let source_range = view_range_to_buffer_range(layout, &line_start, &next_line_start);
                 if source_range.is_some() {
                     events.push(Event::Delete {
@@ -261,7 +261,7 @@ pub fn action_to_events(
                     column: line_len,
                     source_byte: layout.view_position_to_source_byte(line_idx, line_len),
                 };
-                let view_range = ViewEventRange::normalized(cursor.position, line_end);
+                let view_range = ViewEventRange::normalized(cursor.position.into(), line_end.into());
                 let source_range = view_range_to_buffer_range(layout, &cursor.position, &line_end);
                 if source_range.is_some() {
                     events.push(Event::Delete {
@@ -282,7 +282,7 @@ pub fn action_to_events(
         Action::DeleteBackward => {
             for (id, cursor) in cursors.iter() {
                 if let Some(anchor) = cursor.anchor {
-                    let view_range = ViewEventRange::normalized(anchor, cursor.position);
+                    let view_range = ViewEventRange::normalized(anchor.into(), cursor.position.into());
                     let source_range =
                         view_range_to_buffer_range(layout, &anchor, &cursor.position);
                     if source_range.is_some() {
@@ -295,7 +295,7 @@ pub fn action_to_events(
                     }
                 } else if let Some(prev_byte) = cursor.source_byte().and_then(|b| b.checked_sub(1)) {
                     let start = layout_nav::move_horizontal(layout, &cursor.position, -1);
-                    let view_range = ViewEventRange::normalized(start, cursor.position);
+                    let view_range = ViewEventRange::normalized(start.into(), cursor.position.into());
                     events.push(Event::Delete {
                         range: view_range,
                         source_range: Some(prev_byte..cursor.source_byte().unwrap()),
@@ -308,7 +308,7 @@ pub fn action_to_events(
         Action::DeleteForward => {
             for (id, cursor) in cursors.iter() {
                 if let Some(anchor) = cursor.anchor {
-                    let view_range = ViewEventRange::normalized(anchor, cursor.position);
+                    let view_range = ViewEventRange::normalized(anchor.into(), cursor.position.into());
                     let source_range =
                         view_range_to_buffer_range(layout, &anchor, &cursor.position);
                     if source_range.is_some() {
@@ -324,7 +324,7 @@ pub fn action_to_events(
                     let end_byte = layout
                         .view_position_to_source_byte(end_view.view_line, end_view.column)
                         .or_else(|| cursor.position.source_byte.map(|b| b.saturating_add(1)));
-                    let view_range = ViewEventRange::normalized(cursor.position, end_view);
+                    let view_range = ViewEventRange::normalized(cursor.position.into(), end_view.into());
                     events.push(Event::Delete {
                         range: view_range,
                         source_range: end_byte.map(|end| start..end),
@@ -338,7 +338,7 @@ pub fn action_to_events(
             let text = ch.to_string();
             for (id, cursor) in cursors.iter() {
                 if let Some(pos) = view_pos_to_buffer_byte(layout, &cursor.position) {
-                    let mut event_pos = view_pos_to_event(&cursor.position);
+                    let mut event_pos = view_pos_to_event(cursor.position);
                     event_pos.source_byte = Some(pos);
                     events.push(Event::Insert {
                         position: event_pos,
@@ -351,7 +351,7 @@ pub fn action_to_events(
         Action::InsertNewline => {
             for (id, cursor) in cursors.iter() {
                 if let Some(pos) = view_pos_to_buffer_byte(layout, &cursor.position) {
-                    let mut event_pos = view_pos_to_event(&cursor.position);
+                    let mut event_pos = view_pos_to_event(cursor.position);
                     event_pos.source_byte = Some(pos);
                     events.push(Event::Insert {
                         position: event_pos,
@@ -388,7 +388,7 @@ pub fn action_to_events(
         Action::DeleteWordBackward => {
             for (id, cursor) in cursors.iter() {
                 let word_start = layout_nav::move_word_left(layout, &cursor.position, buffer);
-                let view_range = ViewEventRange::normalized(word_start, cursor.position);
+                let view_range = ViewEventRange::normalized(word_start.into(), cursor.position.into());
                 let source_range = view_range_to_buffer_range(layout, &word_start, &cursor.position);
                 if source_range.is_some() {
                     events.push(Event::Delete {
@@ -403,7 +403,7 @@ pub fn action_to_events(
         Action::DeleteWordForward => {
             for (id, cursor) in cursors.iter() {
                 let word_end = layout_nav::move_word_right(layout, &cursor.position, buffer);
-                let view_range = ViewEventRange::normalized(cursor.position, word_end);
+                let view_range = ViewEventRange::normalized(cursor.position.into(), word_end.into());
                 let source_range = view_range_to_buffer_range(layout, &cursor.position, &word_end);
                 if source_range.is_some() {
                     events.push(Event::Delete {
@@ -433,8 +433,8 @@ fn move_cursor_event(
 ) -> Event {
     Event::MoveCursor {
         cursor_id,
-        old_position: view_pos_to_event(&cursor.position),
-        new_position: view_pos_to_event(&new_pos),
+        old_position: view_pos_to_event(cursor.position),
+        new_position: view_pos_to_event(new_pos),
         old_anchor: cursor.anchor.map(view_pos_to_event),
         new_anchor: None,
         old_sticky_column: cursor.preferred_visual_column,
@@ -450,19 +450,15 @@ fn move_cursor_event_with_anchor(
     let anchor = cursor.anchor.unwrap_or(cursor.position);
     Event::MoveCursor {
         cursor_id,
-        old_position: view_pos_to_event(&cursor.position),
-        new_position: view_pos_to_event(&new_pos),
+        old_position: view_pos_to_event(cursor.position),
+        new_position: view_pos_to_event(new_pos),
         old_anchor: cursor.anchor.map(view_pos_to_event),
-        new_anchor: Some(view_pos_to_event(&anchor)),
+        new_anchor: Some(view_pos_to_event(anchor)),
         old_sticky_column: cursor.preferred_visual_column,
         new_sticky_column: cursor.preferred_visual_column,
     }
 }
 
-fn view_pos_to_event(pos: &ViewPosition) -> ViewEventPosition {
-    ViewEventPosition {
-        view_line: pos.view_line,
-        column: pos.column,
-        source_byte: pos.source_byte,
-    }
+fn view_pos_to_event(pos: ViewPosition) -> ViewEventPosition {
+    pos.into()
 }

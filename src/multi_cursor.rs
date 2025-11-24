@@ -1,6 +1,6 @@
 //! Multi-cursor operations for adding cursors at various positions
 
-use crate::cursor::Cursor;
+use crate::cursor::{Cursor, ViewPosition};
 use crate::state::EditorState;
 
 /// Result of attempting to add a cursor
