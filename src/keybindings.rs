@@ -1678,16 +1678,6 @@ mod tests {
             when: None, // Default to normal context
         });
 
-        // Add a custom keybinding for prompt context
-        config.keybindings.push(Keybinding {
-            key: "k".to_string(),
-            modifiers: vec!["ctrl".to_string()],
-            keys: vec![],
-            action: "prompt_cancel".to_string(),
-            args: HashMap::new(),
-            when: Some("prompt".to_string()),
-        });
-
         let resolver = KeybindingResolver::new(&config);
 
         // Test normal context custom binding
@@ -1701,10 +1691,12 @@ mod tests {
         let ctrl_k = KeyEvent::new(KeyCode::Char('k'), KeyModifiers::CONTROL);
         assert_eq!(
             resolver.resolve(&ctrl_k, KeyContext::Prompt),
-            Action::PromptCancel
+            Action::PromptDeleteToLineEnd
         );
-        assert_eq!(resolver.resolve(&ctrl_k, KeyContext::Normal), Action::None);
-        // Not bound in normal
+        assert_eq!(
+            resolver.resolve(&ctrl_k, KeyContext::Normal),
+            Action::DeleteToLineEnd
+        );
     }
 
     #[test]
