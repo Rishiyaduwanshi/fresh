@@ -28,11 +28,13 @@ pub fn add_cursor_at_next_match(state: &mut EditorState) -> AddCursorResult {
         }
     };
 
-    // Extract the selected text
-    let pattern = state.get_text_range(selection_range.start, selection_range.end);
+    // Extract the selected text (using source bytes)
+    let start_byte = selection_range.start.source_byte.unwrap_or(0);
+    let end_byte = selection_range.end.source_byte.unwrap_or(0);
+    let pattern = state.get_text_range(start_byte, end_byte);
 
     // Find the next occurrence after the current selection
-    let search_start = selection_range.end;
+    let search_start = end_byte;
     let match_pos = match state.buffer.find_next(&pattern, search_start) {
         Some(pos) => pos,
         None => {
@@ -43,7 +45,18 @@ pub fn add_cursor_at_next_match(state: &mut EditorState) -> AddCursorResult {
     };
 
     // Create a new cursor at the match position with selection
-    let new_cursor = Cursor::with_selection(match_pos, match_pos + pattern.len());
+    let new_cursor = Cursor::with_selection(
+        ViewPosition {
+            view_line: 0, // TODO: calculate proper view line
+            column: 0,
+            source_byte: Some(match_pos),
+        },
+        ViewPosition {
+            view_line: 0, // TODO: calculate proper view line
+            column: 0,
+            source_byte: Some(match_pos + pattern.len()),
+        },
+    );
 
     AddCursorResult::Success {
         cursor: new_cursor,
@@ -54,23 +67,24 @@ pub fn add_cursor_at_next_match(state: &mut EditorState) -> AddCursorResult {
 /// Add a cursor above the primary cursor at the same column
 pub fn add_cursor_above(state: &mut EditorState) -> AddCursorResult {
     let primary = state.cursors.primary();
+    let position_byte = primary.position.source_byte.unwrap_or(0);
 
     // Check if cursor is at a newline character - if so, treat it as being on the next line
     // This handles the case where add_cursor_above/below places a cursor at the same column,
     // which might land on a newline if the previous line is longer
-    let adjusted_position = if primary.position < state.buffer.len() {
-        if let Ok(byte_at_cursor) = state.buffer.get_text_range_mut(primary.position, 1) {
+    let adjusted_position = if position_byte < state.buffer.len() {
+        if let Ok(byte_at_cursor) = state.buffer.get_text_range_mut(position_byte, 1) {
             if byte_at_cursor.first() == Some(&b'\n') {
                 // Cursor is at newline - treat as being at start of next line
-                primary.position + 1
+                position_byte + 1
             } else {
-                primary.position
+                position_byte
             }
         } else {
-            primary.position
+            position_byte
         }
     } else {
-        primary.position
+        position_byte
     };
 
     // Find the start of the current line using iterator
@@ -105,7 +119,11 @@ pub fn add_cursor_above(state: &mut EditorState) -> AddCursorResult {
         let prev_line_len = line_without_newline.len();
         let new_pos = prev_line_start + col_offset.min(prev_line_len);
 
-        let new_cursor = Cursor::new(new_pos);
+        let new_cursor = Cursor::new(ViewPosition {
+            view_line: 0, // TODO: calculate proper view line
+            column: 0,
+            source_byte: Some(new_pos),
+        });
 
         AddCursorResult::Success {
             cursor: new_cursor,
@@ -121,9 +139,10 @@ pub fn add_cursor_above(state: &mut EditorState) -> AddCursorResult {
 /// Add a cursor below the primary cursor at the same column
 pub fn add_cursor_below(state: &mut EditorState) -> AddCursorResult {
     let primary = state.cursors.primary();
+    let position_byte = primary.position.source_byte.unwrap_or(0);
 
     // Find the start of the current line using iterator
-    let mut iter = state.buffer.line_iterator(primary.position, 80);
+    let mut iter = state.buffer.line_iterator(position_byte, 80);
     let Some((line_start, _)) = iter.next() else {
         return AddCursorResult::Failed {
             message: "Unable to find current line".to_string(),
@@ -131,7 +150,7 @@ pub fn add_cursor_below(state: &mut EditorState) -> AddCursorResult {
     };
 
     // Calculate column offset from line start
-    let col_offset = primary.position - line_start;
+    let col_offset = position_byte - line_start;
 
     // Get next line (we already consumed current line with first iter.next())
     if let Some((next_line_start, next_line_content)) = iter.next() {
@@ -139,7 +158,11 @@ pub fn add_cursor_below(state: &mut EditorState) -> AddCursorResult {
         // Exclude newline from line length calculation
         let next_line_len = next_line_content.trim_end_matches('\n').len();
         let new_pos = next_line_start + col_offset.min(next_line_len);
-        let new_cursor = Cursor::new(new_pos);
+        let new_cursor = Cursor::new(ViewPosition {
+            view_line: 0, // TODO: calculate proper view line
+            column: 0,
+            source_byte: Some(new_pos),
+        });
 
         AddCursorResult::Success {
             cursor: new_cursor,
