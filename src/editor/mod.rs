@@ -95,6 +95,83 @@ fn view_event_range_to_lsp(
         end_char.saturating_sub(start_char),
     )
 }
+
+/// Collect LSP changes from view-centric events (view-centric rewrite).
+/// Only emits LSP edits when source_range is present in the event.
+fn collect_lsp_changes(buffer: &Buffer, event: &Event) -> Vec<TextDocumentContentChangeEvent> {
+    match event {
+        Event::Insert {
+            position,
+            source_range,
+            text,
+            ..
+        } => {
+            // Only send LSP change if we have a source range
+            if let Some(range) = source_range {
+                tracing::debug!(
+                    "collect_lsp_changes: Insert at view pos {:?}, source range {:?}",
+                    position,
+                    range
+                );
+                let (line, character) = buffer.position_to_lsp_position(range.start);
+                let lsp_pos = Position::new(line as u32, character as u32);
+                let lsp_range = LspRange::new(lsp_pos, lsp_pos);
+                vec![TextDocumentContentChangeEvent {
+                    range: Some(lsp_range),
+                    range_length: None,
+                    text: text.clone(),
+                }]
+            } else {
+                // View-only insert (no source mapping) - skip LSP notification
+                tracing::debug!("collect_lsp_changes: Insert at view-only position, skipping");
+                Vec::new()
+            }
+        }
+        Event::Delete {
+            view_range,
+            source_range,
+            ..
+        } => {
+            // Only send LSP change if we have a source range
+            if let Some(range) = source_range {
+                tracing::debug!(
+                    "collect_lsp_changes: Delete view range {:?}, source range {:?}",
+                    view_range,
+                    range
+                );
+                let (start_line, start_char) = buffer.position_to_lsp_position(range.start);
+                let (end_line, end_char) = buffer.position_to_lsp_position(range.end);
+                let lsp_range = LspRange::new(
+                    Position::new(start_line as u32, start_char as u32),
+                    Position::new(end_line as u32, end_char as u32),
+                );
+                vec![TextDocumentContentChangeEvent {
+                    range: Some(lsp_range),
+                    range_length: None,
+                    text: String::new(),
+                }]
+            } else {
+                // View-only delete (no source mapping) - skip LSP notification
+                tracing::debug!("collect_lsp_changes: Delete at view-only range, skipping");
+                Vec::new()
+            }
+        }
+        Event::Batch { events, .. } => {
+            // Recursively collect all changes from batch
+            tracing::debug!(
+                "collect_lsp_changes: processing Batch with {} events",
+                events.len()
+            );
+            let mut all_changes = Vec::new();
+            for sub_event in events {
+                all_changes.extend(collect_lsp_changes(buffer, sub_event));
+            }
+            all_changes
+        }
+        _ => Vec::new(), // Ignore cursor movements and other events
+    }
+}
+
 use crossterm::event::{KeyCode, KeyModifiers};
 use lsp_types::{Position, Range as LspRange, TextDocumentContentChangeEvent};
 use ratatui::{
