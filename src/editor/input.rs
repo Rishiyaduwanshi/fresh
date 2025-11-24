@@ -1,10 +1,6 @@
-use super::normalize_path;
 use super::*;
 use crate::hooks::HookArgs;
 use crate::keybindings::Action;
-use crate::word_navigation::{
-    find_completion_word_start_view, find_word_start_view, find_word_end_view,
-};
 
 impl Editor {
     /// Determine the current keybinding context based on UI state.
@@ -563,7 +559,7 @@ impl Editor {
 
                         // Map source byte to view position via layout
                         let view_pos =
-                            crate::navigation::mapping::map_source_to_view(layout, source_byte);
+                            crate::navigation::mapping::source_to_view_pos(layout, source_byte, None);
 
                         let msg = format!(
                             "Jumped to estimated line {} (large file mode)",
@@ -583,7 +579,7 @@ impl Editor {
 
                         // Map source byte to view position
                         let view_pos =
-                            crate::navigation::mapping::map_source_to_view(layout, source_byte);
+                            crate::navigation::mapping::source_to_view_pos(layout, source_byte, None);
 
                         let msg = if target_line > max_line {
                             format!(

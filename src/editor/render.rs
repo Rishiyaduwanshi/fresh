@@ -1,5 +1,4 @@
 use super::*;
-use crate::viewport::Viewport;
 use ratatui::layout::{Constraint, Direction, Layout as UiLayout};
 use ratatui::Frame;
 
