@@ -1554,12 +1554,24 @@ impl Editor {
     }
 
     /// Sync SplitViewState's cursors and viewport to EditorState
-    /// Called before action_to_events to ensure EditorState has current view state
+    /// Called when switching splits to restore the split's view state
     fn sync_split_view_state_to_editor_state(&mut self) {
         let split_id = self.split_manager.active_split();
         if let Some(view_state) = self.split_view_states.get(&split_id) {
             if let Some(buffer_state) = self.buffers.get_mut(&self.active_buffer) {
                 buffer_state.cursors = view_state.cursors.clone();
+                buffer_state.viewport = view_state.viewport.clone();
+            }
+        }
+    }
+
+    /// Sync only viewport from SplitViewState to EditorState
+    /// Called before action_to_events to ensure correct viewport dimensions for PageDown/PageUp
+    /// Note: Does NOT sync cursors - EditorState is authoritative for cursor state during editing
+    fn sync_viewport_from_split_view_state(&mut self) {
+        let split_id = self.split_manager.active_split();
+        if let Some(view_state) = self.split_view_states.get(&split_id) {
+            if let Some(buffer_state) = self.buffers.get_mut(&self.active_buffer) {
                 buffer_state.viewport = view_state.viewport.clone();
             }
         }

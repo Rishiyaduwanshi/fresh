@@ -1139,10 +1139,11 @@ impl Editor {
     /// Convert an action into a list of events to apply to the active buffer
     /// Returns None for actions that don't generate events (like Quit)
     pub fn action_to_events(&mut self, action: Action) -> Option<Vec<Event>> {
-        // Sync SplitViewState to EditorState BEFORE action conversion
-        // This ensures action_to_events sees the correct viewport/cursor state
-        // (since scroll events now update SplitViewState directly)
-        self.sync_split_view_state_to_editor_state();
+        // Sync viewport from SplitViewState to EditorState BEFORE action conversion
+        // This ensures action_to_events sees correct viewport dimensions for PageDown/PageUp
+        // (since scroll events now update SplitViewState's viewport directly)
+        // Note: We only sync viewport, NOT cursors - EditorState has authoritative cursor state
+        self.sync_viewport_from_split_view_state();
 
         let tab_size = self.config.editor.tab_size;
         let auto_indent = self.config.editor.auto_indent;
