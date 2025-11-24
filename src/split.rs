@@ -25,6 +25,7 @@
 /// ```
 use crate::cursor::Cursors;
 use crate::event::{BufferId, SplitDirection, SplitId};
+use crate::ui::view_pipeline::Layout;
 use crate::viewport::Viewport;
 use crate::{plugin_api::ViewTransformPayload, state::ViewMode};
 use ratatui::layout::Rect;
@@ -94,6 +95,10 @@ pub struct SplitViewState {
 
     /// Optional view transform payload for this split/viewport
     pub view_transform: Option<ViewTransformPayload>,
+
+    /// Computed layout for this view (from view_transform or base tokens)
+    /// This is View state - each split has its own Layout
+    pub layout: Option<Layout>,
 }
 
 impl SplitViewState {
@@ -109,6 +114,7 @@ impl SplitViewState {
             compose_column_guides: None,
             compose_prev_line_numbers: None,
             view_transform: None,
+            layout: None,
         }
     }
 
@@ -124,6 +130,7 @@ impl SplitViewState {
             compose_column_guides: None,
             compose_prev_line_numbers: None,
             view_transform: None,
+            layout: None,
         }
     }
 

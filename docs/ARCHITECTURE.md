@@ -523,15 +523,41 @@ pub struct Cursor {
 }
 ```
 
+### Layout Building Strategy: Lazy but Required
+
+Following VSCode's ViewModel pattern, the Layout is built **lazily but is never optional**:
+
+```rust
+impl SplitViewState {
+    /// Get or build the layout. Always succeeds - no fallback to buffer.
+    fn ensure_layout(&mut self, buffer: &Buffer) -> &Layout {
+        if self.layout.is_none() || self.layout_dirty {
+            self.rebuild_layout(buffer);
+        }
+        self.layout.as_ref().unwrap()
+    }
+}
+```
+
+**Key principle**: Every operation that needs Layout calls `ensure_layout()` first. There is no "fallback to buffer-based scrolling" - Layout always exists when needed.
+
+**Layout becomes dirty when:**
+- Buffer content changes (Insert/Delete events)
+- View transform changes (plugin sends new tokens)
+- Scroll would move past current layout's source_range
+
 ### The Frame Flow
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│ 1. BUILD LAYOUT (on buffer/transform change)                │
-│    • Get view transform tokens (from plugin or base)        │
-│    • Convert to ViewLines via ViewLineIterator              │
-│    • Build byte→view_line index                             │
-│    • Store in SplitViewState.layout (per-view!)             │
+│ 1. ANY VIEW OPERATION (scroll, cursor move, render)         │
+│    • Call ensure_layout() first                             │
+│    • If layout is None or dirty:                            │
+│      - Get view transform tokens (from plugin or base)      │
+│      - Convert to ViewLines via ViewLineIterator            │
+│      - Build byte→view_line index                           │
+│      - Store in SplitViewState.layout                       │
+│    • Proceed with operation using valid Layout              │
 └─────────────────────────────────────────────────────────────┘
                               │
                               ▼
@@ -539,11 +565,13 @@ pub struct Cursor {
 │ 2. PROCESS INPUT (routed by event type)                     │
 │                                                             │
 │    Scroll Event → SplitViewState:                           │
+│    • ensure_layout()                                        │
 │    • viewport.top_view_line += offset                       │
 │    • Clamp to [0, layout.lines.len() - viewport.height]     │
 │    • Update anchor_byte from layout for stability           │
 │                                                             │
 │    Cursor Move (↑/↓) → SplitViewState:                      │
+│    • ensure_layout()                                        │
 │    • Find cursor's (view_line, visual_col) in layout        │
 │    • Move to adjacent view line, same visual column         │
 │    • Translate back to source byte via char_mappings        │
@@ -551,11 +579,11 @@ pub struct Cursor {
 │                                                             │
 │    Cursor Move (←/→/word/etc) → SplitViewState:             │
 │    • Operate directly on source bytes (document layer)      │
-│    • Call ensure_visible() to adjust viewport if needed     │
+│    • ensure_layout(), then ensure_visible()                 │
 │                                                             │
 │    Edit (insert/delete) → EditorState (shared buffer):      │
 │    • Modify buffer at cursor.position                       │
-│    • Mark ALL views' layouts as dirty → rebuild next frame  │
+│    • Mark ALL views' layouts as dirty                       │
 └─────────────────────────────────────────────────────────────┘
                               │
                               ▼
