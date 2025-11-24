@@ -102,18 +102,17 @@ fn collect_lsp_changes(buffer: &Buffer, event: &Event) -> Vec<TextDocumentConten
     match event {
         Event::Insert {
             position,
-            source_range,
             text,
             ..
         } => {
-            // Only send LSP change if we have a source range
-            if let Some(range) = source_range {
+            // Only send LSP change if we have a source byte
+            if let Some(byte) = position.source_byte {
                 tracing::debug!(
-                    "collect_lsp_changes: Insert at view pos {:?}, source range {:?}",
+                    "collect_lsp_changes: Insert at view pos {:?}, source byte {:?}",
                     position,
-                    range
+                    byte
                 );
-                let (line, character) = buffer.position_to_lsp_position(range.start);
+                let (line, character) = buffer.position_to_lsp_position(byte);
                 let lsp_pos = Position::new(line as u32, character as u32);
                 let lsp_range = LspRange::new(lsp_pos, lsp_pos);
                 vec![TextDocumentContentChangeEvent {
@@ -128,19 +127,19 @@ fn collect_lsp_changes(buffer: &Buffer, event: &Event) -> Vec<TextDocumentConten
             }
         }
         Event::Delete {
-            view_range,
+            range: view_range,
             source_range,
             ..
         } => {
             // Only send LSP change if we have a source range
-            if let Some(range) = source_range {
+            if let Some(src_range) = source_range {
                 tracing::debug!(
                     "collect_lsp_changes: Delete view range {:?}, source range {:?}",
                     view_range,
-                    range
+                    src_range
                 );
-                let (start_line, start_char) = buffer.position_to_lsp_position(range.start);
-                let (end_line, end_char) = buffer.position_to_lsp_position(range.end);
+                let (start_line, start_char) = buffer.position_to_lsp_position(src_range.start);
+                let (end_line, end_char) = buffer.position_to_lsp_position(src_range.end);
                 let lsp_range = LspRange::new(
                     Position::new(start_line as u32, start_char as u32),
                     Position::new(end_line as u32, end_char as u32),
@@ -2920,13 +2919,13 @@ impl Editor {
             state.cursors
                 .primary()
                 .selection_range()
-                .map(|(s, e)| (view_pos_to_event(s), view_pos_to_event(e)))
+                .map(|sel| (view_pos_to_event(sel.start), view_pos_to_event(sel.end)))
         };
 
-        let selected_text = if let Some(range) = selection_range.clone() {
+        let selected_text = if let Some((start_pos, end_pos)) = selection_range.clone() {
             let state = self.active_state_mut();
-            let start = range.start.source_byte.unwrap_or(0);
-            let end = range.end.source_byte.unwrap_or(start);
+            let start = start_pos.source_byte.unwrap_or(0);
+            let end = end_pos.source_byte.unwrap_or(start);
             let text = state.get_text_range(start, end);
             if !text.contains('\n') && !text.is_empty() {
                 Some(text)
@@ -4054,7 +4053,7 @@ impl Editor {
                     .iter()
                     .map(|(_, cursor)| CursorInfo {
                         position: view_pos_to_event(cursor.position),
-                        selection: cursor.selection_range().map(|(s, e)| (view_pos_to_event(s), view_pos_to_event(e))),
+                        selection: cursor.selection_range().map(|sel| (view_pos_to_event(sel.start), view_pos_to_event(sel.end))),
                     })
                     .collect();
 
@@ -4105,6 +4104,7 @@ impl Editor {
                     let deleted_text = state.get_text_range(range.start, range.end);
                     let event = Event::Delete {
                         range,
+                        source_range: None, // TODO: plugin ranges need proper source mapping
                         deleted_text,
                         cursor_id: CursorId(0),
                     };
@@ -5200,6 +5200,7 @@ impl Editor {
                             let deleted_text = state.get_text_range(range.start, range.end);
                             Event::Delete {
                                 range: range.clone(),
+                                source_range: None, // TODO: add proper source range mapping
                                 deleted_text,
                                 cursor_id: primary_id,
                             }
@@ -6319,6 +6320,7 @@ impl Editor {
                                     let cursor_id = state.cursors.primary_id();
                                     let delete_event = Event::Delete {
                                         range: start_pos..end_pos,
+                                        source_range: Some(start_pos..end_pos), // byte-based range
                                         deleted_text,
                                         cursor_id,
                                     };
@@ -6461,6 +6463,7 @@ impl Editor {
                                     let cursor_id = state.cursors.primary_id();
                                     let delete_event = Event::Delete {
                                         range: start_pos..end_pos,
+                                        source_range: Some(start_pos..end_pos), // byte-based range
                                         deleted_text,
                                         cursor_id,
                                     };

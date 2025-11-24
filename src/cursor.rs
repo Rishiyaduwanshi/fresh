@@ -1,4 +1,5 @@
 use crate::event::CursorId;
+use crate::selection::Selection;
 use std::collections::HashMap;
 
 /// Selection mode for cursors
@@ -141,15 +142,15 @@ impl Cursor {
     }
 
     /// Get the selection range, if any (for normal selection) in view coordinates
-    pub fn selection_range(&self) -> Option<(ViewPosition, ViewPosition)> {
+    pub fn selection_range(&self) -> Option<Selection> {
         self.anchor.map(|anchor| {
             if anchor.view_line < self.position.view_line
                 || (anchor.view_line == self.position.view_line
                     && anchor.column <= self.position.column)
             {
-                (anchor, self.position)
+                Selection::new(anchor, self.position)
             } else {
-                (self.position, anchor)
+                Selection::new(self.position, anchor)
             }
         })
     }
@@ -157,14 +158,14 @@ impl Cursor {
     /// Get the start of the selection (min of position and anchor)
     pub fn selection_start(&self) -> ViewPosition {
         self.selection_range()
-            .map(|(start, _)| start)
+            .map(|sel| sel.start)
             .unwrap_or(self.position)
     }
 
     /// Get the end of the selection (max of position and anchor)
     pub fn selection_end(&self) -> ViewPosition {
         self.selection_range()
-            .map(|(_, end)| end)
+            .map(|sel| sel.end)
             .unwrap_or(self.position)
     }
 
