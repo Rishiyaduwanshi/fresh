@@ -83,11 +83,16 @@ pub fn action_to_events(
         }
         Action::MoveDocumentEnd => {
             let last_line = layout.lines.len().saturating_sub(1);
+            let last_col = layout
+                .lines
+                .get(last_line)
+                .map(|l| l.char_mappings.len())
+                .unwrap_or(0);
             for (id, cursor) in cursors.iter() {
                 let new_pos = ViewPosition {
                     view_line: last_line,
-                    column: layout.lines.get(last_line).map(|l| l.char_mappings.len()).unwrap_or(0),
-                    source_byte: layout.get_source_byte_for_line(last_line),
+                    column: last_col,
+                    source_byte: layout.view_position_to_source_byte(last_line, last_col),
                 };
                 events.push(move_cursor_event(id, cursor, new_pos, Some(new_pos.column)));
             }
