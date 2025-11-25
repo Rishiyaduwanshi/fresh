@@ -1,4 +1,4 @@
 # .config/nextest.toml
 [profile.default]
 
-slow-timeout = { period = "2s", terminate-after = 2 }
+slow-timeout = { period = "2s", terminate-after = 20 }

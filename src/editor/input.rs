@@ -647,25 +647,28 @@ impl Editor {
                         (view_pos, msg)
                     };
 
-                    // Create MoveCursor event with view position
-                    let event = crate::event::Event::MoveCursor {
-                        cursor_id,
-                        old_position: old_position.into(),
-                        new_position: new_position.into(),
-                        old_anchor: old_anchor.map(|a| a.into()),
-                        new_anchor: None,
-                        old_sticky_column,
-                        new_sticky_column: Some(new_position.column),
-                    };
+                    // Create MoveCursor event with view position (only if positions are resolved)
+                    if let (Some(old_ev), Some(new_ev)) = (
+                        ViewEventPosition::try_from_view_position(old_position),
+                        ViewEventPosition::try_from_view_position(new_position),
+                    ) {
+                        let event = crate::event::Event::MoveCursor {
+                            cursor_id,
+                            old_position: old_ev,
+                            new_position: new_ev,
+                            old_anchor: old_anchor.and_then(ViewEventPosition::try_from_view_position),
+                            new_anchor: None,
+                            old_sticky_column,
+                            new_sticky_column: new_position.column,
+                        };
 
-                    // Apply the event
-                    self.active_event_log_mut().append(event.clone());
-                    self.apply_event_to_active_buffer(&event);
+                        // Apply the event
+                        self.active_event_log_mut().append(event.clone());
+                        self.apply_event_to_active_buffer(&event);
 
-                    // Record position history
-                    let view_event_pos = self.view_pos_to_event(new_position);
-                    self.position_history
-                        .record_movement(buffer_id, view_event_pos, None);
+                        // Record position history
+                        self.position_history.record_movement(buffer_id, new_ev, None);
+                    }
 
                     self.set_status_message(status_message);
                 }
@@ -1371,8 +1374,8 @@ impl Editor {
 
         // Create a ViewPosition and move the cursor
         let view_pos = ViewPosition {
-            view_line,
-            column: text_col,
+            view_line: Some(view_line),
+            column: Some(text_col),
             source_byte: Some(position),
         };
 

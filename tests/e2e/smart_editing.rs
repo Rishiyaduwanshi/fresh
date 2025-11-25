@@ -994,8 +994,8 @@ fn test_block_selection_rectangle() {
     let cur_col = cursor.position.column;
 
     // Cursor should be at line 1, column 3 (after moving right twice then down)
-    assert_eq!(cur_line, 1, "Cursor should be on line 1");
-    assert_eq!(cur_col, 3, "Cursor should be at column 3");
+    assert_eq!(cur_line, Some(1), "Cursor should be on line 1");
+    assert_eq!(cur_col, Some(3), "Cursor should be at column 3");
 }
 
 /// Test that block selection left works

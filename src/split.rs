@@ -283,21 +283,25 @@ impl SplitViewState {
                     };
 
                     // Create new position as ViewPosition (for cursor update) and ViewEventPosition (for event)
-                    let new_view_pos = crate::cursor::ViewPosition {
-                        view_line: target_view_line,
-                        column: goal_col,
-                        source_byte: Some(new_pos_byte),
-                    };
+                    let new_view_pos = crate::cursor::ViewPosition::resolved(
+                        target_view_line,
+                        goal_col,
+                        new_pos_byte,
+                    );
 
-                    events.push(crate::event::Event::MoveCursor {
-                        cursor_id,
-                        old_position: cursor.position.into(),
-                        new_position: new_view_pos.into(),
-                        old_anchor: cursor.anchor.map(|a| a.into()),
-                        new_anchor: new_anchor.map(|a| a.into()),
-                        old_sticky_column: cursor.sticky_column,
-                        new_sticky_column: Some(goal_col),
-                    });
+                    if let Some(old_position) = crate::event::ViewEventPosition::try_from_view_position(cursor.position) {
+                        let new_position = crate::event::ViewEventPosition::try_from_view_position(new_view_pos)
+                            .unwrap_or_else(|| crate::event::ViewEventPosition::from_source_byte(new_pos_byte));
+                        events.push(crate::event::Event::MoveCursor {
+                            cursor_id,
+                            old_position,
+                            new_position,
+                            old_anchor: cursor.anchor.and_then(crate::event::ViewEventPosition::try_from_view_position),
+                            new_anchor: new_anchor.and_then(crate::event::ViewEventPosition::try_from_view_position),
+                            old_sticky_column: cursor.sticky_column,
+                            new_sticky_column: Some(goal_col),
+                        });
+                    }
 
                     if let Some(c) = self.cursors.get_mut(cursor_id) {
                         c.position = new_view_pos;

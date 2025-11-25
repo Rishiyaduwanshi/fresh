@@ -1,5 +1,6 @@
 use crate::common::fixtures::TestFixture;
 use crate::common::harness::EditorTestHarness;
+use crate::common::tracing::init_tracing_from_env;
 use tempfile::TempDir;
 
 /// Test viewport scrolling with large file
@@ -925,6 +926,8 @@ fn test_load_big_file_e2e() {
 fn test_jump_to_eof_large_file() {
     use crossterm::event::{KeyCode, KeyModifiers};
     use std::time::Instant;
+
+    init_tracing_from_env();
 
     // Get shared large file (all tests use the same 61MB file for efficiency)
     let big_txt_path = TestFixture::big_txt_for_test("jump_to_eof_large_file").unwrap();

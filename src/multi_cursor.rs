@@ -45,17 +45,10 @@ pub fn add_cursor_at_next_match(state: &mut EditorState) -> AddCursorResult {
     };
 
     // Create a new cursor at the match position with selection
+    // View coordinates will be resolved when layout is built
     let new_cursor = Cursor::with_selection(
-        ViewPosition {
-            view_line: 0, // TODO: calculate proper view line
-            column: 0,
-            source_byte: Some(match_pos),
-        },
-        ViewPosition {
-            view_line: 0, // TODO: calculate proper view line
-            column: 0,
-            source_byte: Some(match_pos + pattern.len()),
-        },
+        ViewPosition::from_source(match_pos),
+        ViewPosition::from_source(match_pos + pattern.len()),
     );
 
     AddCursorResult::Success {
@@ -119,11 +112,8 @@ pub fn add_cursor_above(state: &mut EditorState) -> AddCursorResult {
         let prev_line_len = line_without_newline.len();
         let new_pos = prev_line_start + col_offset.min(prev_line_len);
 
-        let new_cursor = Cursor::new(ViewPosition {
-            view_line: 0, // TODO: calculate proper view line
-            column: 0,
-            source_byte: Some(new_pos),
-        });
+        // View coordinates will be resolved when layout is built
+        let new_cursor = Cursor::new(ViewPosition::from_source(new_pos));
 
         AddCursorResult::Success {
             cursor: new_cursor,
@@ -158,11 +148,8 @@ pub fn add_cursor_below(state: &mut EditorState) -> AddCursorResult {
         // Exclude newline from line length calculation
         let next_line_len = next_line_content.trim_end_matches('\n').len();
         let new_pos = next_line_start + col_offset.min(next_line_len);
-        let new_cursor = Cursor::new(ViewPosition {
-            view_line: 0, // TODO: calculate proper view line
-            column: 0,
-            source_byte: Some(new_pos),
-        });
+        // View coordinates will be resolved when layout is built
+        let new_cursor = Cursor::new(ViewPosition::from_source(new_pos));
 
         AddCursorResult::Success {
             cursor: new_cursor,

@@ -279,15 +279,18 @@ fn map_source_to_view(layout: &Layout, byte: usize) -> Option<ViewPosition> {
     layout
         .source_byte_to_view_position(byte)
         .map(|(line, col)| ViewPosition {
-            view_line: line,
-            column: col,
+            view_line: Some(line),
+            column: Some(col),
             source_byte: Some(byte),
         })
 }
 
 /// Map a view position to a source byte via layout.
+/// Returns None if view coordinates are not resolved.
 fn map_view_to_source(layout: &Layout, pos: &ViewPosition) -> Option<usize> {
-    layout.view_position_to_source_byte(pos.view_line, pos.column)
+    let view_line = pos.view_line?;
+    let column = pos.column?;
+    layout.view_position_to_source_byte(view_line, column)
 }
 
 /// Find word start in view coordinates (falls back to original position if unmapped).
@@ -365,8 +368,8 @@ mod tests {
 
     fn vp(line: usize, col: usize, source: Option<usize>) -> ViewPosition {
         ViewPosition {
-            view_line: line,
-            column: col,
+            view_line: Some(line),
+            column: Some(col),
             source_byte: source,
         }
     }
@@ -430,12 +433,12 @@ mod tests {
 
         let pos = vp(0, 3, Some(3)); // inside "hello"
         let start = find_word_start_view(&layout, &pos, &buffer);
-        assert_eq!(start.view_line, 0);
-        assert_eq!(start.column, 0);
+        assert_eq!(start.view_line, Some(0));
+        assert_eq!(start.column, Some(0));
 
         let end = find_word_end_view(&layout, &pos, &buffer);
-        assert_eq!(end.view_line, 0);
-        assert_eq!(end.column, 5);
+        assert_eq!(end.view_line, Some(0));
+        assert_eq!(end.column, Some(5));
     }
 
     #[test]
@@ -446,8 +449,8 @@ mod tests {
 
         let pos = vp(0, 7, Some(7)); // after bar
         let start = find_completion_word_start_view(&layout, &pos, &buffer);
-        assert_eq!(start.view_line, 0);
-        assert_eq!(start.column, 4); // after '.'
+        assert_eq!(start.view_line, Some(0));
+        assert_eq!(start.column, Some(4)); // after '.'
     }
 
     #[test]
@@ -455,7 +458,12 @@ mod tests {
         let text = "hello";
         let buffer = Buffer::from_str_test(text);
         let layout = layout_from_text(text);
-        let unmapped = vp(0, 0, None);
+        // Position with unresolved view coordinates - should return unchanged
+        let unmapped = ViewPosition {
+            view_line: None,
+            column: None,
+            source_byte: Some(0),
+        };
         assert_eq!(
             find_word_start_view(&layout, &unmapped, &buffer),
             unmapped

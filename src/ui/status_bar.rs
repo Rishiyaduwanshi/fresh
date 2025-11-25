@@ -130,8 +130,8 @@ impl StatusBarRenderer {
 
         // Derive view position and optional source position (line/col) for display.
         let (view_line, view_col) = (
-            cursor.position.view_line.saturating_add(1),
-            cursor.position.column.saturating_add(1),
+            cursor.position.view_line.map(|l| l + 1).unwrap_or(1),
+            cursor.position.column.map(|c| c + 1).unwrap_or(1),
         );
 
         let mut source_display = None;

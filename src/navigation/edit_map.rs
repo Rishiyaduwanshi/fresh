@@ -16,5 +16,9 @@ pub fn view_range_to_buffer_range(
 
 /// Map a single view position to a buffer byte, if available.
 pub fn view_pos_to_buffer_byte(layout: &Layout, pos: &ViewPosition) -> Option<usize> {
-    pos.source_byte.or_else(|| layout.view_position_to_source_byte(pos.view_line, pos.column))
+    pos.source_byte.or_else(|| {
+        let view_line = pos.view_line?;
+        let column = pos.column?;
+        layout.view_position_to_source_byte(view_line, column)
+    })
 }

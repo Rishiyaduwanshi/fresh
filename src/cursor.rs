@@ -18,80 +18,89 @@ impl Default for SelectionMode {
 }
 
 /// Position in view coordinates with optional source mapping
+///
+/// `view_line` and `column` are None when position hasn't been resolved against a Layout.
+/// `source_byte` is None for injected/view-only content (annotations).
+///
+/// For code buffers: `source_byte` is always known, view coords need Layout to resolve.
+/// For annotations: `source_byte` is None, view coords are set directly.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ViewPosition {
-    pub view_line: usize,
-    pub column: usize,
-    /// Optional source byte offset (None for injected/view-only content)
+    /// View line index (None = needs resolution from source_byte via Layout)
+    pub view_line: Option<usize>,
+    /// Column in the view line (None = needs resolution from source_byte via Layout)
+    pub column: Option<usize>,
+    /// Source byte offset (None for injected/view-only content)
     pub source_byte: Option<usize>,
 }
 
 impl std::fmt::Display for ViewPosition {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let line = self.view_line.map(|l| l.to_string()).unwrap_or_else(|| "?".to_string());
+        let col = self.column.map(|c| c.to_string()).unwrap_or_else(|| "?".to_string());
         match self.source_byte {
-            Some(byte) => write!(f, "{}:{} (@{})", self.view_line, self.column, byte),
-            None => write!(f, "{}:{}", self.view_line, self.column),
+            Some(byte) => write!(f, "{}:{} (@{})", line, col, byte),
+            None => write!(f, "{}:{}", line, col),
         }
     }
 }
 
 impl PartialOrd for ViewPosition {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        Some(self.cmp(other))
+        // Compare by source_byte if both have it, otherwise by view coords
+        match (self.source_byte, other.source_byte) {
+            (Some(a), Some(b)) => Some(a.cmp(&b)),
+            _ => match (self.view_line, other.view_line) {
+                (Some(a), Some(b)) => match a.cmp(&b) {
+                    std::cmp::Ordering::Equal => self.column.partial_cmp(&other.column),
+                    ord => Some(ord),
+                },
+                _ => None, // Can't compare unresolved positions
+            },
+        }
     }
 }
 
 impl Ord for ViewPosition {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        match self.view_line.cmp(&other.view_line) {
-            std::cmp::Ordering::Equal => self.column.cmp(&other.column),
-            other => other,
-        }
-    }
-}
-
-impl std::ops::Add<usize> for ViewPosition {
-    type Output = ViewPosition;
-    fn add(self, rhs: usize) -> Self::Output {
-        ViewPosition {
-            view_line: self.view_line,
-            column: self.column + rhs,
-            source_byte: self.source_byte,
-        }
-    }
-}
-
-impl std::ops::Sub<usize> for ViewPosition {
-    type Output = ViewPosition;
-    fn sub(self, rhs: usize) -> Self::Output {
-        ViewPosition {
-            view_line: self.view_line,
-            column: self.column.saturating_sub(rhs),
-            source_byte: self.source_byte,
-        }
-    }
-}
-
-impl std::ops::AddAssign<usize> for ViewPosition {
-    fn add_assign(&mut self, rhs: usize) {
-        self.column += rhs;
-    }
-}
-
-impl std::ops::SubAssign<usize> for ViewPosition {
-    fn sub_assign(&mut self, rhs: usize) {
-        self.column = self.column.saturating_sub(rhs);
+        self.partial_cmp(other).unwrap_or(std::cmp::Ordering::Equal)
     }
 }
 
 impl ViewPosition {
-    /// Construct a view position from a source byte (view coordinates unknown during migration)
-    pub fn from_source_byte(byte: usize) -> Self {
+    /// Create a source-backed position (view coords unresolved)
+    pub fn from_source(source_byte: usize) -> Self {
         Self {
-            view_line: 0,
-            column: byte,
-            source_byte: Some(byte),
+            view_line: None,
+            column: None,
+            source_byte: Some(source_byte),
         }
+    }
+
+    /// Create a view-only position (for injected content)
+    pub fn from_view(view_line: usize, column: usize) -> Self {
+        Self {
+            view_line: Some(view_line),
+            column: Some(column),
+            source_byte: None,
+        }
+    }
+
+    /// Create a fully resolved position
+    pub fn resolved(view_line: usize, column: usize, source_byte: usize) -> Self {
+        Self {
+            view_line: Some(view_line),
+            column: Some(column),
+            source_byte: Some(source_byte),
+        }
+    }
+}
+
+impl ViewPosition {
+    /// Construct a view position from a source byte (view coordinates unknown)
+    /// Alias for from_source() kept for backward compatibility
+    pub fn from_source_byte(byte: usize) -> Self {
+        Self::from_source(byte)
     }
 }
 
@@ -243,15 +252,18 @@ impl Cursor {
         // Adjust position
         if let Some(byte) = self.position.source_byte {
             self.position.source_byte = Some(Self::adjust_byte(byte, edit_pos, old_len, new_len));
-            // Also update column as a rough approximation (will be recalculated with layout)
-            self.position.column = self.position.source_byte.unwrap_or(0);
+            // Invalidate view coordinates - they'll be recalculated when layout is rebuilt
+            self.position.view_line = None;
+            self.position.column = None;
         }
 
         // Adjust anchor if present
         if let Some(ref mut anchor) = self.anchor {
             if let Some(byte) = anchor.source_byte {
                 anchor.source_byte = Some(Self::adjust_byte(byte, edit_pos, old_len, new_len));
-                anchor.column = anchor.source_byte.unwrap_or(0);
+                // Invalidate view coordinates
+                anchor.view_line = None;
+                anchor.column = None;
             }
         }
     }
@@ -278,23 +290,13 @@ impl Cursor {
     pub fn set_source_byte(&mut self, byte: Option<usize>) {
         self.position.source_byte = byte;
     }
-
-    /// Get the column of the cursor
-    pub fn column(&self) -> usize {
-        self.position.column
-    }
-
-    /// Get the view line of the cursor
-    pub fn view_line(&self) -> usize {
-        self.position.view_line
-    }
 }
 
 impl From<crate::event::ViewEventPosition> for ViewPosition {
     fn from(v: crate::event::ViewEventPosition) -> Self {
         ViewPosition {
-            view_line: v.view_line,
-            column: v.column,
+            view_line: Some(v.view_line),
+            column: Some(v.column),
             source_byte: v.source_byte,
         }
     }
@@ -314,17 +316,13 @@ pub struct Cursors {
 }
 
 impl Cursors {
-    /// Create a new cursor collection with one cursor at view (0,0)
+    /// Create a new cursor collection with one cursor at position (0,0)
     pub fn new() -> Self {
         let primary_id = CursorId(0);
         let mut cursors = HashMap::new();
         cursors.insert(
             primary_id,
-            Cursor::new(ViewPosition {
-                view_line: 0,
-                column: 0,
-                source_byte: Some(0),
-            }),
+            Cursor::new(ViewPosition::resolved(0, 0, 0)),
         );
 
         Self {
@@ -406,12 +404,8 @@ impl Cursors {
             if let Some((&first_id, _)) = self.cursors.iter().next() {
                 self.primary_id = first_id;
             } else {
-                // Always keep one cursor
-                let new_cursor = Cursor::new(ViewPosition {
-                    view_line: 0,
-                    column: 0,
-                    source_byte: Some(0),
-                });
+                // Always keep one cursor - create one at document start
+                let new_cursor = Cursor::new(ViewPosition::resolved(0, 0, 0));
                 self.cursors.insert(id, new_cursor);
                 self.primary_id = id;
                 self.next_id = id.0 + 1;

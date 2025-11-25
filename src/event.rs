@@ -58,13 +58,15 @@ impl std::fmt::Display for ViewEventPosition {
     }
 }
 
-impl From<crate::cursor::ViewPosition> for ViewEventPosition {
-    fn from(pos: crate::cursor::ViewPosition) -> Self {
-        Self {
-            view_line: pos.view_line,
-            column: pos.column,
+impl ViewEventPosition {
+    /// Try to convert from a ViewPosition.
+    /// Returns None if view coordinates (view_line or column) are not resolved.
+    pub fn try_from_view_position(pos: crate::cursor::ViewPosition) -> Option<Self> {
+        Some(Self {
+            view_line: pos.view_line?,
+            column: pos.column?,
             source_byte: pos.source_byte,
-        }
+        })
     }
 }
 
@@ -87,10 +89,11 @@ impl ViewEventPosition {
         for ch in text.chars() {
             match ch {
                 '\n' => {
-                    current_line += 1;
+                    // Use saturating_add to handle placeholder usize::MAX values
+                    current_line = current_line.saturating_add(1);
                     current_col = 0;
                 }
-                _ => current_col += 1,
+                _ => current_col = current_col.saturating_add(1),
             }
         }
 

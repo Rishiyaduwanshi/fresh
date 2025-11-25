@@ -166,6 +166,40 @@ impl SplitRenderer {
                         // After edits, source_byte is updated but view_line/column may be stale.
                         // We must sync before ensure_visible_in_layout so scrolling goes to the right place.
                         // Note: We sync view_state.cursors since it gets copied back to state at the end.
+                        //
+                        // If cursor is outside layout's source_range (e.g., jumped to EOF),
+                        // we need to rebuild layout centered on the cursor first.
+                        // May need multiple iterations for small files where layout doesn't
+                        // extend far enough from anchor_byte.
+                        let mut layout = layout;
+                        let primary_byte = view_state
+                            .cursors
+                            .primary()
+                            .position
+                            .source_byte
+                            .unwrap_or(0);
+                        let mut rebuild_attempts = 0;
+                        while !layout.source_range.contains(&primary_byte)
+                            && primary_byte != layout.source_range.end
+                            && rebuild_attempts < 3
+                        {
+                            // Cursor is outside layout range - rebuild starting closer to cursor
+                            // Use cursor position minus a small buffer so cursor ends up in middle/end of layout
+                            let buffer_offset = estimated_line_length
+                                * view_state.viewport.visible_line_count()
+                                / 2;
+                            // For subsequent attempts, start closer to cursor
+                            let multiplier = rebuild_attempts + 1;
+                            view_state.viewport.anchor_byte = primary_byte.saturating_sub(
+                                buffer_offset / multiplier,
+                            );
+                            view_state.invalidate_layout();
+                            layout = view_state
+                                .ensure_layout(&mut state.buffer, estimated_line_length, wrap_params)
+                                .clone();
+                            rebuild_attempts += 1;
+                        }
+
                         let cursor_ids: Vec<_> =
                             view_state.cursors.iter().map(|(id, _)| id).collect();
                         for cursor_id in cursor_ids {
@@ -174,8 +208,8 @@ impl SplitRenderer {
                                     if let Some((view_line, column)) =
                                         layout.source_byte_to_view_position(byte)
                                     {
-                                        cursor.position.view_line = view_line;
-                                        cursor.position.column = column;
+                                        cursor.position.view_line = Some(view_line);
+                                        cursor.position.column = Some(column);
                                     }
                                 }
                             }
@@ -540,52 +574,89 @@ impl SplitRenderer {
         state.viewport.height = content_rect.height;
     }
 
-    /// Build base tokens for a viewport.
-    ///
-    /// Properly tokenizes buffer content, splitting on newlines to create
-    /// separate Text and Newline tokens. This allows ViewLineIterator to
-    /// correctly identify line boundaries.
-    pub fn build_base_tokens_for_hook(
+    fn build_base_tokens(
         buffer: &mut Buffer,
-        _top_view_line: usize,
-        _estimated_line_length: usize,
-        _visible_count: usize,
+        top_byte: usize,
+        estimated_line_length: usize,
+        visible_count: usize,
     ) -> Vec<crate::plugin_api::ViewTokenWire> {
         use crate::plugin_api::{ViewTokenWire, ViewTokenWireKind};
 
-        let len = buffer.len();
-        let text = buffer.get_text_range_mut(0, len).unwrap_or_default();
-        let content = String::from_utf8_lossy(&text);
-
         let mut tokens = Vec::new();
-        let mut byte_offset = 0usize;
+        let mut iter = buffer.line_iterator(top_byte, estimated_line_length);
+        let mut lines_seen = 0usize;
+        let max_lines = visible_count.saturating_add(4);
 
-        // Split content by newlines and create proper tokens
-        for (idx, line) in content.split('\n').enumerate() {
-            // Add text token for the line content (if non-empty)
-            if !line.is_empty() {
-                tokens.push(ViewTokenWire {
-                    source_offset: Some(byte_offset),
-                    kind: ViewTokenWireKind::Text(line.to_string()),
-                    style: None,
-                });
-                byte_offset += line.len();
-            }
+        while lines_seen < max_lines {
+            if let Some((line_start, line_content)) = iter.next() {
+                let mut byte_offset = 0usize;
+                for ch in line_content.chars() {
+                    let ch_len = ch.len_utf8();
+                    let source_offset = Some(line_start + byte_offset);
 
-            // Check if there's a newline after this segment
-            // (all segments except the last one came from a split, so they had a newline)
-            let has_trailing_newline = idx < content.matches('\n').count();
-            if has_trailing_newline {
-                tokens.push(ViewTokenWire {
-                    source_offset: Some(byte_offset),
-                    kind: ViewTokenWireKind::Newline,
-                    style: None,
-                });
-                byte_offset += 1; // newline is 1 byte
+                    match ch {
+                        '\n' => {
+                            tokens.push(ViewTokenWire {
+                                source_offset,
+                                kind: ViewTokenWireKind::Newline,
+                                style: None,
+                            });
+                        }
+                        ' ' => {
+                            tokens.push(ViewTokenWire {
+                                source_offset,
+                                kind: ViewTokenWireKind::Space,
+                                style: None,
+                            });
+                        }
+                        _ => {
+                            // Accumulate consecutive non-space/non-newline chars into Text tokens
+                            if let Some(last) = tokens.last_mut() {
+                                if let ViewTokenWireKind::Text(ref mut s) = last.kind {
+                                    // Extend existing Text token if contiguous
+                                    let expected_offset = last.source_offset.map(|o| o + s.len());
+                                    if expected_offset == Some(line_start + byte_offset) {
+                                        s.push(ch);
+                                        byte_offset += ch_len;
+                                        continue;
+                                    }
+                                }
+                            }
+                            tokens.push(ViewTokenWire {
+                                source_offset,
+                                kind: ViewTokenWireKind::Text(ch.to_string()),
+                                style: None,
+                            });
+                        }
+                    }
+                    byte_offset += ch_len;
+                }
+                lines_seen += 1;
+            } else {
+                break;
             }
         }
 
+        // Handle empty buffer
+        if tokens.is_empty() {
+            tokens.push(ViewTokenWire {
+                source_offset: Some(top_byte),
+                kind: ViewTokenWireKind::Text(String::new()),
+                style: None,
+            });
+        }
+
         tokens
+    }
+
+    /// Public wrapper for building base tokens - used by render.rs for the view_transform_request hook
+    pub fn build_base_tokens_for_hook(
+        buffer: &mut Buffer,
+        top_byte: usize,
+        estimated_line_length: usize,
+        visible_count: usize,
+    ) -> Vec<crate::plugin_api::ViewTokenWire> {
+        Self::build_base_tokens(buffer, top_byte, estimated_line_length, visible_count)
     }
 
     fn build_contexts(
@@ -720,20 +791,20 @@ impl SplitRenderer {
 
             if input.is_active && cursor_pos.is_none() {
                 let primary = input.state.cursors.primary();
-                if primary.position.view_line == global_line_idx {
-                    // Account for horizontal scroll (left_column) when calculating screen x
-                    let left_col = input.state.viewport.left_column;
-                    let content_width = input.render_area.width.saturating_sub(gutter_len as u16);
+                if let (Some(view_line), Some(column)) = (primary.position.view_line, primary.position.column) {
+                    if view_line == global_line_idx {
+                        // Account for horizontal scroll (left_column) when calculating screen x
+                        let left_col = input.state.viewport.left_column;
+                        let content_width = input.render_area.width.saturating_sub(gutter_len as u16);
 
-                    // Only show cursor if it's within the visible horizontal range
-                    if primary.position.column >= left_col
-                        && primary.position.column < left_col + content_width as usize
-                    {
-                        let adjusted_col = primary.position.column.saturating_sub(left_col);
-                        cursor_pos = Some((
-                            input.render_area.x + gutter_len as u16 + adjusted_col as u16,
-                            idx as u16 + input.render_area.y,
-                        ));
+                        // Only show cursor if it's within the visible horizontal range
+                        if column >= left_col && column < left_col + content_width as usize {
+                            let adjusted_col = column.saturating_sub(left_col);
+                            cursor_pos = Some((
+                                input.render_area.x + gutter_len as u16 + adjusted_col as u16,
+                                idx as u16 + input.render_area.y,
+                            ));
+                        }
                     }
                 }
             }

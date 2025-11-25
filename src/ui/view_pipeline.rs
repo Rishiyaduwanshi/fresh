@@ -300,6 +300,11 @@ impl Layout {
 
     /// Find the view position (line, column) for a source byte
     pub fn source_byte_to_view_position(&self, byte: usize) -> Option<(usize, usize)> {
+        // Return None if byte is outside this layout's source range
+        if !self.source_range.contains(&byte) && byte != self.source_range.end {
+            return None;
+        }
+
         // Find the view line containing this byte
         if let Some((&_line_start_byte, &line_idx)) = self.byte_to_line.range(..=byte).last() {
             if line_idx < self.lines.len() {

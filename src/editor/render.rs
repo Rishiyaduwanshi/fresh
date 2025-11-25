@@ -18,7 +18,7 @@ impl Editor {
             // Ensure layout.
             let gutter_width = view_state.viewport.gutter_width(&buffer_state.buffer);
             let wrap_params = Some((view_state.viewport.width as usize, gutter_width));
-            let layout = view_state
+            let mut layout = view_state
                 .ensure_layout(
                     &mut buffer_state.buffer,
                     self.config.editor.estimated_line_length,
@@ -26,31 +26,98 @@ impl Editor {
                 )
                 .clone();
 
-            // Sync cursor view positions from source_byte using the layout.
-            // This is necessary because after edits, source_byte is updated but view_line/column
-            // may be stale. Navigation actions depend on correct view_line.
-            let cursor_ids: Vec<_> = view_state.cursors.iter().map(|(id, _)| id).collect();
-            for cursor_id in cursor_ids {
-                if let Some(cursor) = view_state.cursors.get_mut(cursor_id) {
-                    if let Some(byte) = cursor.position.source_byte {
-                        if let Some((view_line, column)) = layout.source_byte_to_view_position(byte)
-                        {
-                            cursor.position.view_line = view_line;
-                            cursor.position.column = column;
-                        }
-                    }
-                    // Also sync anchor if present
-                    if let Some(ref mut anchor) = cursor.anchor {
-                        if let Some(byte) = anchor.source_byte {
+            // If cursor is outside layout's source_range (e.g., jumped to EOF),
+            // we need to rebuild layout centered on the cursor first.
+            let primary_byte = view_state
+                .cursors
+                .primary()
+                .position
+                .source_byte
+                .unwrap_or(0);
+            let estimated_line_length = self.config.editor.estimated_line_length;
+            if !layout.source_range.contains(&primary_byte)
+                && primary_byte != layout.source_range.end
+            {
+                // Cursor is outside layout range - rebuild from cursor position
+                view_state.viewport.anchor_byte = primary_byte.saturating_sub(
+                    estimated_line_length * view_state.viewport.visible_line_count() / 2,
+                );
+                view_state.invalidate_layout();
+                layout = view_state
+                    .ensure_layout(
+                        &mut buffer_state.buffer,
+                        estimated_line_length,
+                        wrap_params,
+                    )
+                    .clone();
+            }
+
+            // Helper to sync cursor view positions from source_byte using the layout.
+            fn sync_cursors_to_layout(
+                cursors: &mut crate::cursor::Cursors,
+                layout: &crate::ui::view_pipeline::Layout,
+            ) {
+                for cursor_id in cursors.iter().map(|(id, _)| id).collect::<Vec<_>>() {
+                    if let Some(cursor) = cursors.get_mut(cursor_id) {
+                        if let Some(byte) = cursor.position.source_byte {
                             if let Some((view_line, column)) =
                                 layout.source_byte_to_view_position(byte)
                             {
-                                anchor.view_line = view_line;
-                                anchor.column = column;
+                                cursor.position.view_line = Some(view_line);
+                                cursor.position.column = Some(column);
+                            }
+                        }
+                        // Also sync anchor if present
+                        if let Some(ref mut anchor) = cursor.anchor {
+                            if let Some(byte) = anchor.source_byte {
+                                if let Some((view_line, column)) =
+                                    layout.source_byte_to_view_position(byte)
+                                {
+                                    anchor.view_line = Some(view_line);
+                                    anchor.column = Some(column);
+                                }
                             }
                         }
                     }
                 }
+            }
+
+            // Sync cursor view positions from source_byte using the layout.
+            // This is necessary because after edits, source_byte is updated but view_line/column
+            // may be stale. Navigation actions depend on correct view_line.
+            sync_cursors_to_layout(&mut view_state.cursors, &layout);
+
+            // Check if cursor is at top of layout but layout doesn't start at byte 0.
+            // This means we need to expand backwards for upward navigation to work.
+            // IMPORTANT: Also verify cursor.source_byte is actually near the start of buffer,
+            // not just that view_line == 0 (which could be stale after failed sync).
+            let cursor_view_line = view_state.cursors.primary().position.view_line;
+            let cursor_source_byte = view_state
+                .cursors
+                .primary()
+                .position
+                .source_byte
+                .unwrap_or(0);
+            let cursor_near_layout_start =
+                cursor_source_byte <= layout.source_range.start.saturating_add(estimated_line_length);
+            if cursor_view_line == Some(0) && layout.source_range.start > 0 && cursor_near_layout_start {
+                // Expand layout backwards from current anchor
+                let backtrack_bytes =
+                    estimated_line_length * view_state.viewport.visible_line_count();
+                view_state.viewport.anchor_byte = layout
+                    .source_range
+                    .start
+                    .saturating_sub(backtrack_bytes);
+                view_state.invalidate_layout();
+                layout = view_state
+                    .ensure_layout(
+                        &mut buffer_state.buffer,
+                        estimated_line_length,
+                        wrap_params,
+                    )
+                    .clone();
+                // Re-sync cursor position after layout expansion
+                sync_cursors_to_layout(&mut view_state.cursors, &layout);
             }
 
             // Convert action.

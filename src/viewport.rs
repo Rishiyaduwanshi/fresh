@@ -101,16 +101,21 @@ impl Viewport {
     }
 
     /// Ensure a cursor is visible within the layout (view-based).
+    /// If cursor view coordinates are not resolved, no scrolling is performed.
     pub fn ensure_visible_in_layout(
         &mut self,
         cursor: &Cursor,
         layout: &Layout,
         gutter_width: usize,
     ) {
+        // Only scroll if view coordinates are resolved
+        let Some(cursor_line) = cursor.position.view_line else {
+            return;
+        };
+
         let visible = self.visible_line_count();
         let top = self.top_view_line;
         let bottom = top.saturating_add(visible.saturating_sub(1));
-        let cursor_line = cursor.position.view_line;
 
         if cursor_line < top + self.scroll_offset {
             let new_top = cursor_line.saturating_sub(self.scroll_offset);
@@ -132,7 +137,9 @@ impl Viewport {
         }
 
         // Horizontal scroll for wrapped vs unwrapped is left as-is; reuse existing left_column.
-        let cursor_col = cursor.position.column;
+        let Some(cursor_col) = cursor.position.column else {
+            return;
+        };
         let content_width = self.width as usize - gutter_width;
 
         if cursor_col < self.left_column + self.horizontal_scroll_offset {
@@ -167,19 +174,21 @@ impl Viewport {
     }
 
     /// Compute cursor screen position from layout/view.
+    /// Returns (0, 0) if view coordinates are not resolved.
     pub fn cursor_screen_position_layout(
         &self,
-        layout: &Layout,
+        _layout: &Layout,
         cursor: &Cursor,
         gutter_width: usize,
     ) -> (u16, u16) {
-        let row = cursor
-            .position
-            .view_line
-            .saturating_sub(self.top_view_line);
-        let col = cursor
-            .position
-            .column
+        let Some(view_line) = cursor.position.view_line else {
+            return (0, 0);
+        };
+        let Some(column) = cursor.position.column else {
+            return (0, 0);
+        };
+        let row = view_line.saturating_sub(self.top_view_line);
+        let col = column
             .saturating_sub(self.left_column)
             .saturating_add(gutter_width);
 
@@ -187,12 +196,16 @@ impl Viewport {
     }
 
     /// Basic cursor screen position using viewport offsets (no layout/gutter).
+    /// Returns (0, 0) if view coordinates are not resolved.
     pub fn cursor_screen_position(&self, _buffer: &mut Buffer, cursor: &Cursor) -> (u16, u16) {
-        let row = cursor
-            .position
-            .view_line
-            .saturating_sub(self.top_view_line);
-        let col = cursor.position.column.saturating_sub(self.left_column);
+        let Some(view_line) = cursor.position.view_line else {
+            return (0, 0);
+        };
+        let Some(column) = cursor.position.column else {
+            return (0, 0);
+        };
+        let row = view_line.saturating_sub(self.top_view_line);
+        let col = column.saturating_sub(self.left_column);
         (col as u16, row as u16)
     }
 
@@ -216,11 +229,16 @@ impl Viewport {
     }
 
     /// Compatibility: ensure visibility using view coords only (no layout).
+    /// If cursor view coordinates are not resolved, no scrolling is performed.
     pub fn ensure_visible(&mut self, _buffer: &mut Buffer, cursor: &Cursor) {
+        // Only scroll if view coordinates are resolved
+        let Some(cursor_line) = cursor.position.view_line else {
+            return;
+        };
+
         let visible = self.visible_line_count();
         let top = self.top_view_line;
         let bottom = top.saturating_add(visible.saturating_sub(1));
-        let cursor_line = cursor.position.view_line;
 
         if cursor_line < top + self.scroll_offset {
             self.top_view_line = cursor_line.saturating_sub(self.scroll_offset);
@@ -235,7 +253,9 @@ impl Viewport {
             self.anchor_byte = src;
         }
         // Horizontal scrolling based on column only.
-        let cursor_col = cursor.position.column;
+        let Some(cursor_col) = cursor.position.column else {
+            return;
+        };
         if cursor_col < self.left_column + self.horizontal_scroll_offset {
             self.left_column = cursor_col.saturating_sub(self.horizontal_scroll_offset);
         } else if cursor_col
@@ -320,8 +340,8 @@ mod tests {
 
     fn cursor_at(line: usize, col: usize, src: Option<usize>) -> Cursor {
         Cursor::new(crate::cursor::ViewPosition {
-            view_line: line,
-            column: col,
+            view_line: Some(line),
+            column: Some(col),
             source_byte: src,
         })
     }

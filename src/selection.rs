@@ -44,13 +44,20 @@ impl Selection {
     }
 
     /// Get the length in view coordinates (approximation)
+    /// Returns 0 if view coordinates are not resolved.
     pub fn len(&self) -> usize {
-        if self.start.view_line == self.end.view_line {
-            self.end.column.saturating_sub(self.start.column)
+        let (Some(start_line), Some(start_col)) = (self.start.view_line, self.start.column) else {
+            return 0;
+        };
+        let (Some(end_line), Some(end_col)) = (self.end.view_line, self.end.column) else {
+            return 0;
+        };
+        if start_line == end_line {
+            end_col.saturating_sub(start_col)
         } else {
             // Multi-line selection: approximate
-            let line_diff = self.end.view_line.saturating_sub(self.start.view_line);
-            line_diff * 80 + self.end.column
+            let line_diff = end_line.saturating_sub(start_line);
+            line_diff * 80 + end_col
         }
     }
 }
