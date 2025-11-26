@@ -1529,8 +1529,7 @@ impl Editor {
 
     /// Split the current pane horizontally
     pub fn split_pane_horizontal(&mut self) {
-        // Save current split's view state before creating a new one
-        self.sync_editor_state_to_split_view_state();
+        // Note: No sync needed - cursor/viewport state lives directly in split_view_states
 
         // Share the current buffer with the new split (Emacs-style)
         let current_buffer_id = self.active_buffer;
@@ -1562,8 +1561,7 @@ impl Editor {
 
     /// Split the current pane vertically
     pub fn split_pane_vertical(&mut self) {
-        // Save current split's view state before creating a new one
-        self.sync_editor_state_to_split_view_state();
+        // Note: No sync needed - cursor/viewport state lives directly in split_view_states
 
         // Share the current buffer with the new split (Emacs-style)
         let current_buffer_id = self.active_buffer;
@@ -1610,7 +1608,7 @@ impl Editor {
 
     /// Switch to next split
     pub fn next_split(&mut self) {
-        self.sync_editor_state_to_split_view_state();
+        // Note: No sync needed - cursor/viewport state lives directly in split_view_states
         self.split_manager.next_split();
         self.restore_current_split_view_state();
         self.set_status_message("Switched to next split".to_string());
@@ -1618,7 +1616,7 @@ impl Editor {
 
     /// Switch to previous split
     pub fn prev_split(&mut self) {
-        self.sync_editor_state_to_split_view_state();
+        // Note: No sync needed - cursor/viewport state lives directly in split_view_states
         self.split_manager.prev_split();
         self.restore_current_split_view_state();
         self.set_status_message("Switched to previous split".to_string());
@@ -1649,41 +1647,16 @@ impl Editor {
         if let Some(buffer_id) = self.split_manager.active_buffer_id() {
             self.active_buffer = buffer_id;
         }
-        // Initialize EditorState from the split's view state
-        self.sync_split_view_state_to_editor_state();
+        // Note: Cursor/viewport state lives in split_view_states - no sync needed
+        // since EditorState no longer stores cursor/viewport
         // Ensure the active tab is visible in the newly active split
         self.ensure_active_tab_visible(split_id, self.active_buffer, self.effective_tabs_width());
     }
 
-    /// Initialize EditorState's cursors and viewport from SplitViewState
-    ///
-    /// Called when switching to a different split to load that split's view state
-    /// into EditorState for event processing. This is the SplitViewState → EditorState
-    /// direction of the sync.
-    fn sync_split_view_state_to_editor_state(&mut self) {
-        let split_id = self.split_manager.active_split();
-        if let Some(view_state) = self.split_view_states.get(&split_id) {
-            if let Some(buffer_state) = self.buffers.get_mut(&self.active_buffer) {
-                buffer_state.cursors = view_state.cursors.clone();
-                buffer_state.viewport = view_state.viewport.clone();
-            }
-        }
-    }
-
-    /// Sync viewport dimensions from SplitViewState to EditorState
-    ///
-    /// Called before action_to_events() to ensure EditorState has correct viewport
-    /// dimensions for PageDown/PageUp calculations. Only syncs width/height, not
-    /// scroll position (top_byte).
-    fn sync_viewport_from_split_view_state(&mut self) {
-        let split_id = self.split_manager.active_split();
-        if let Some(view_state) = self.split_view_states.get(&split_id) {
-            if let Some(buffer_state) = self.buffers.get_mut(&self.active_buffer) {
-                buffer_state.viewport.width = view_state.viewport.width;
-                buffer_state.viewport.height = view_state.viewport.height;
-            }
-        }
-    }
+    // Note: The old sync functions (sync_split_view_state_to_editor_state and
+    // sync_viewport_from_split_view_state) have been removed. Cursors and viewport
+    // now live exclusively in SplitViewState - they are no longer stored in EditorState.
+    // Functions that need cursor/viewport data should get it directly from split_view_states.
 
     /// Adjust cursors in other splits that share the same buffer after an edit
     fn adjust_other_split_cursors_for_event(&mut self, event: &Event) {
@@ -1999,11 +1972,16 @@ impl Editor {
         let lsp_changes = self.collect_lsp_changes(event);
 
         // 1. Apply the event to the buffer
-        self.active_state_mut().apply(event);
-
-        // 1b. Sync cursors and viewport from EditorState to SplitViewState
-        // This keeps the authoritative View state in SplitViewState up to date
-        self.sync_editor_state_to_split_view_state();
+        // Cursors and viewport are passed from split_view_states (the authoritative source)
+        let buffer_id = self.active_buffer;
+        let split_id = self.split_manager.active_split();
+        if let (Some(state), Some(view_state)) = (
+            self.buffers.get_mut(&buffer_id),
+            self.split_view_states.get_mut(&split_id),
+        ) {
+            state.apply(event, &mut view_state.cursors, &mut view_state.viewport);
+        }
+        // Note: No sync needed - changes are applied directly to split_view_states
 
         // 1c. Invalidate layouts for all views of this buffer after content changes
         if matches!(event, Event::Insert { .. } | Event::Delete { .. }) {
@@ -2262,19 +2240,9 @@ impl Editor {
     ///
     /// Called after each event is applied to EditorState to persist the changes
     /// back to the authoritative SplitViewState. This is the EditorState → SplitViewState
-    /// direction of the sync, ensuring the split's view state reflects all modifications.
-    ///
-    /// Also called before switching splits to ensure the current split's state is saved
-    /// (though this is usually redundant since we sync after each event).
-    fn sync_editor_state_to_split_view_state(&mut self) {
-        let split_id = self.split_manager.active_split();
-        if let Some(buffer_state) = self.buffers.get(&self.active_buffer) {
-            if let Some(view_state) = self.split_view_states.get_mut(&split_id) {
-                view_state.cursors = buffer_state.cursors.clone();
-                view_state.viewport = buffer_state.viewport.clone();
-            }
-        }
-    }
+    /// Note: The old sync_editor_state_to_split_view_state function has been removed.
+    /// Cursors and viewport now live exclusively in SplitViewState - they are no longer
+    /// stored in EditorState, so there's nothing to sync.
 
     /// Get the event log for the active buffer
     pub fn active_event_log(&self) -> &EventLog {
@@ -4457,41 +4425,49 @@ impl Editor {
 
                 // If line/column specified, jump to that location
                 if line.is_some() || column.is_some() {
-                    let state = self.active_state_mut();
-
                     // Convert 1-indexed line/column to byte position
                     let target_line = line.unwrap_or(1).saturating_sub(1); // Convert to 0-indexed
                     let column_offset = column.unwrap_or(1).saturating_sub(1); // Convert to 0-indexed
 
-                    let mut iter = state.buffer.line_iterator(0, 80);
-                    let mut target_byte = 0;
+                    // Calculate target byte position from buffer
+                    let (final_position, buffer_len) =
+                        if let Some(state) = self.buffers.get(&self.active_buffer) {
+                            let mut iter = state.buffer.line_iterator(0, 80);
+                            let mut target_byte = 0;
 
-                    // Iterate through lines until we reach the target
-                    for current_line in 0..=target_line {
-                        if let Some((line_start, _)) = iter.next() {
-                            if current_line == target_line {
-                                target_byte = line_start;
-                                break;
+                            // Iterate through lines until we reach the target
+                            for current_line in 0..=target_line {
+                                if let Some((line_start, _)) = iter.next() {
+                                    if current_line == target_line {
+                                        target_byte = line_start;
+                                        break;
+                                    }
+                                } else {
+                                    // Reached end of buffer before target line
+                                    break;
+                                }
                             }
+
+                            // Add the column offset to position within the line
+                            let final_position = target_byte + column_offset;
+                            (final_position, state.buffer.len())
                         } else {
-                            // Reached end of buffer before target line
-                            break;
-                        }
+                            return Ok(());
+                        };
+
+                    // Update cursor position in split_view_states and ensure visible
+                    let active_split = self.split_manager.active_split();
+                    if let (Some(state), Some(view_state)) = (
+                        self.buffers.get_mut(&self.active_buffer),
+                        self.split_view_states.get_mut(&active_split),
+                    ) {
+                        view_state.cursors.primary_mut().position = final_position.min(buffer_len);
+                        view_state.cursors.primary_mut().anchor = None;
+
+                        // Ensure the position is visible
+                        let cursor = view_state.cursors.primary().clone();
+                        view_state.viewport.ensure_visible(&mut state.buffer, &cursor);
                     }
-
-                    // Add the column offset to position within the line
-                    // Column offset is byte offset from line start (matching git grep --column behavior)
-                    let final_position = target_byte + column_offset;
-
-                    // Ensure we don't go past the buffer end
-                    let buffer_len = state.buffer.len();
-                    state.cursors.primary_mut().position = final_position.min(buffer_len);
-                    state.cursors.primary_mut().anchor = None;
-
-                    // Ensure the position is visible
-                    state
-                        .viewport
-                        .ensure_visible(&mut state.buffer, state.cursors.primary());
                 }
             }
             PluginCommand::OpenFileInSplit {
@@ -4500,8 +4476,7 @@ impl Editor {
                 line,
                 column,
             } => {
-                // Save current split's view state before switching
-                self.sync_editor_state_to_split_view_state();
+                // Note: No sync needed - cursor/viewport state lives directly in split_view_states
 
                 // Switch to the target split
                 let target_split_id = SplitId(split_id);
@@ -4931,8 +4906,7 @@ impl Editor {
                     return Ok(());
                 }
 
-                // Save current split's view state
-                self.sync_editor_state_to_split_view_state();
+                // Note: No sync needed - cursor/viewport state lives directly in split_view_states
 
                 // Determine split direction
                 let split_dir = match direction.as_deref() {
