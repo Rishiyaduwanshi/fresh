@@ -275,10 +275,70 @@ pub fn action_to_events(
                 // Skip-over logic for closing brackets/quotes
                 // When the user types a closing bracket and the cursor is right before that bracket,
                 // just move the cursor forward instead of inserting a duplicate
+                // BUT: if line has only spaces before cursor, perform dedent first (for auto-paired braces)
                 if auto_indent && matches!(ch, ')' | ']' | '}' | '"' | '\'' | '`') {
                     if let Some(next_byte) = char_after {
                         if next_byte == ch as u8 {
-                            // Just move cursor forward, don't insert
+                            // Check if we need to dedent before skipping over
+                            // This handles the case where auto-pair inserted the closing delimiter
+                            // and we pressed Enter to get indent, then typed the closing delimiter
+                            if is_closing_delimiter && only_spaces && insert_position > line_start {
+                                // Calculate correct indent
+                                let correct_indent =
+                                    if let Some(highlighter) = &state.highlighter {
+                                        let language = highlighter.language();
+                                        state
+                                            .indent_calculator
+                                            .borrow_mut()
+                                            .calculate_dedent_for_delimiter(
+                                                &state.buffer,
+                                                insert_position,
+                                                ch,
+                                                language,
+                                                tab_size,
+                                            )
+                                            .unwrap_or(0)
+                                    } else {
+                                        0
+                                    };
+
+                                let current_indent = insert_position - line_start;
+                                if current_indent != correct_indent {
+                                    // Delete incorrect spacing
+                                    let deleted_text =
+                                        state.get_text_range(line_start, insert_position);
+                                    events.push(Event::Delete {
+                                        range: line_start..insert_position,
+                                        deleted_text,
+                                        cursor_id,
+                                    });
+
+                                    // Insert correct spacing
+                                    if correct_indent > 0 {
+                                        events.push(Event::Insert {
+                                            position: line_start,
+                                            text: " ".repeat(correct_indent),
+                                            cursor_id,
+                                        });
+                                    }
+
+                                    // Move cursor to after the closing delimiter
+                                    // After the delete and insert, the delimiter is at line_start + correct_indent
+                                    // We want to skip over it
+                                    events.push(Event::MoveCursor {
+                                        cursor_id,
+                                        old_position: line_start + correct_indent,
+                                        new_position: line_start + correct_indent + 1,
+                                        old_anchor: None,
+                                        new_anchor: None,
+                                        old_sticky_column: 0,
+                                        new_sticky_column: 0,
+                                    });
+                                    continue;
+                                }
+                            }
+
+                            // Just move cursor forward, don't insert (no dedent needed)
                             events.push(Event::MoveCursor {
                                 cursor_id,
                                 old_position: insert_position,
@@ -293,7 +353,7 @@ pub fn action_to_events(
                     }
                 }
 
-                // Auto-dedent logic for closing delimiters
+                // Auto-dedent logic for closing delimiters (when there's no existing delimiter to skip over)
                 if is_closing_delimiter
                     && auto_indent
                     && only_spaces

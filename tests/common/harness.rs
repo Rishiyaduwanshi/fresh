@@ -905,6 +905,11 @@ impl EditorTestHarness {
         self.editor.active_state().buffer.len()
     }
 
+    /// Check if the current buffer has a highlighter set up
+    pub fn has_highlighter(&self) -> bool {
+        self.editor.active_state().highlighter.is_some()
+    }
+
     /// Get the shadow string (for property testing)
     pub fn get_shadow_string(&self) -> &str {
         &self.shadow_string
