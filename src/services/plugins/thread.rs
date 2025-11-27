@@ -225,7 +225,7 @@ impl PluginThreadHandle {
 
     /// Load a plugin from a file (blocking)
     pub fn load_plugin(&self, path: &Path) -> Result<()> {
-        let (tx, mut rx) = oneshot::channel();
+        let (tx, rx) = oneshot::channel();
         self.request_sender
             .send(PluginRequest::LoadPlugin {
                 path: path.to_path_buf(),
@@ -238,7 +238,7 @@ impl PluginThreadHandle {
 
     /// Load all plugins from a directory (blocking)
     pub fn load_plugins_from_dir(&self, dir: &Path) -> Vec<String> {
-        let (tx, mut rx) = oneshot::channel();
+        let (tx, rx) = oneshot::channel();
         if self
             .request_sender
             .send(PluginRequest::LoadPluginsFromDir {
@@ -256,7 +256,7 @@ impl PluginThreadHandle {
 
     /// Unload a plugin (blocking)
     pub fn unload_plugin(&self, name: &str) -> Result<()> {
-        let (tx, mut rx) = oneshot::channel();
+        let (tx, rx) = oneshot::channel();
         self.request_sender
             .send(PluginRequest::UnloadPlugin {
                 name: name.to_string(),
@@ -269,7 +269,7 @@ impl PluginThreadHandle {
 
     /// Reload a plugin (blocking)
     pub fn reload_plugin(&self, name: &str) -> Result<()> {
-        let (tx, mut rx) = oneshot::channel();
+        let (tx, rx) = oneshot::channel();
         self.request_sender
             .send(PluginRequest::ReloadPlugin {
                 name: name.to_string(),
@@ -286,7 +286,7 @@ impl PluginThreadHandle {
     /// The caller should poll this while processing commands to avoid deadlock.
     pub fn execute_action_async(&self, action_name: &str) -> Result<oneshot::Receiver<Result<()>>> {
         tracing::trace!("execute_action_async: starting action '{}'", action_name);
-        let (tx, mut rx) = oneshot::channel();
+        let (tx, rx) = oneshot::channel();
         self.request_sender
             .send(PluginRequest::ExecuteAction {
                 action_name: action_name.to_string(),
@@ -312,7 +312,7 @@ impl PluginThreadHandle {
 
     /// Check if any handlers are registered for a hook (blocking)
     pub fn has_hook_handlers(&self, hook_name: &str) -> bool {
-        let (tx, mut rx) = oneshot::channel();
+        let (tx, rx) = oneshot::channel();
         if self
             .request_sender
             .send(PluginRequest::HasHookHandlers {
@@ -329,7 +329,7 @@ impl PluginThreadHandle {
 
     /// List all loaded plugins (blocking)
     pub fn list_plugins(&self) -> Vec<TsPluginInfo> {
-        let (tx, mut rx) = oneshot::channel();
+        let (tx, rx) = oneshot::channel();
         if self
             .request_sender
             .send(PluginRequest::ListPlugins { response: tx })
