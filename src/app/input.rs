@@ -646,10 +646,19 @@ impl Editor {
                     self.set_status_message("Editing disabled in this buffer".to_string());
                     return Ok(());
                 }
-                let events = self.active_event_log_mut().undo();
+                let event_log = self.active_event_log_mut();
+                let before_idx = event_log.current_index();
+                let can_undo = event_log.can_undo();
+                let events = event_log.undo();
+                let after_idx = self.active_event_log().current_index();
+                tracing::debug!(
+                    "Undo: before_idx={}, after_idx={}, can_undo={}, events_count={}",
+                    before_idx, after_idx, can_undo, events.len()
+                );
                 // Apply all inverse events collected during undo
-                for event in events {
-                    self.apply_event_to_active_buffer(&event);
+                for event in &events {
+                    tracing::debug!("Undo applying event: {:?}", event);
+                    self.apply_event_to_active_buffer(event);
                 }
                 // Update modified status based on event log position
                 self.update_modified_from_event_log();
@@ -1440,9 +1449,25 @@ impl Editor {
                                 normalize_path(&self.working_dir.join(input_path))
                             };
 
+                            // Debug: log event log state before save
+                            let before_idx = self.active_event_log().current_index();
+                            let before_len = self.active_event_log().len();
+                            tracing::debug!(
+                                "SaveFileAs BEFORE: event_log index={}, len={}",
+                                before_idx, before_len
+                            );
+
                             // Save the buffer to the new file
                             match self.active_state_mut().buffer.save_to_file(&full_path) {
                                 Ok(()) => {
+                                    // Debug: log event log state after buffer save
+                                    let after_save_idx = self.active_event_log().current_index();
+                                    let after_save_len = self.active_event_log().len();
+                                    tracing::debug!(
+                                        "SaveFileAs AFTER buffer.save_to_file: event_log index={}, len={}",
+                                        after_save_idx, after_save_len
+                                    );
+
                                     // Update metadata with the new path
                                     let metadata = BufferMetadata::with_file(
                                         full_path.clone(),
@@ -1452,6 +1477,19 @@ impl Editor {
 
                                     // Mark the event log position as saved (for undo modified tracking)
                                     self.active_event_log_mut().mark_saved();
+                                    tracing::debug!(
+                                        "SaveFileAs AFTER mark_saved: event_log index={}, len={}",
+                                        self.active_event_log().current_index(),
+                                        self.active_event_log().len()
+                                    );
+
+                                    // Record the file modification time so auto-revert won't trigger
+                                    // for our own save. This is critical for preserving undo history.
+                                    if let Ok(metadata) = std::fs::metadata(&full_path) {
+                                        if let Ok(mtime) = metadata.modified() {
+                                            self.file_mod_times.insert(full_path.clone(), mtime);
+                                        }
+                                    }
 
                                     // Notify LSP of the new file if applicable
                                     self.notify_lsp_save();

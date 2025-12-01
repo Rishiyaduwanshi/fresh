@@ -690,6 +690,11 @@ impl EventLog {
         self.current_index
     }
 
+    /// Get the number of events in the log
+    pub fn len(&self) -> usize {
+        self.entries.len()
+    }
+
     /// Can we undo?
     pub fn can_undo(&self) -> bool {
         self.current_index > 0
