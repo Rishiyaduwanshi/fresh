@@ -2910,20 +2910,20 @@ impl Editor {
             };
 
             // Check if the file actually changed (compare mod times)
-            let file_changed = if let Ok(metadata) = std::fs::metadata(&path) {
-                if let Ok(new_mtime) = metadata.modified() {
-                    match self.file_mod_times.get(&path) {
-                        Some(old_mtime) => new_mtime > *old_mtime,
-                        None => true,
-                    }
-                } else {
-                    true
-                }
-            } else {
-                false
+            // We use optimistic concurrency: check mtime, and if we decide to revert,
+            // re-check to handle the race where a save completed between our checks.
+            let current_mtime = match std::fs::metadata(&path).and_then(|m| m.modified()) {
+                Ok(mtime) => mtime,
+                Err(_) => continue, // Can't read file, skip
             };
 
-            if !file_changed {
+            let dominated_by_stored = self
+                .file_mod_times
+                .get(&path)
+                .map(|stored| current_mtime <= *stored)
+                .unwrap_or(false);
+
+            if dominated_by_stored {
                 continue;
             }
 
@@ -2938,6 +2938,19 @@ impl Editor {
 
             // Auto-revert if enabled and buffer is not modified
             if self.auto_revert_enabled {
+                // Optimistic concurrency: re-check mtime before reverting.
+                // A save may have completed between our first check and now,
+                // updating file_mod_times. If so, skip the revert.
+                let still_needs_revert = self
+                    .file_mod_times
+                    .get(&path)
+                    .map(|stored| current_mtime > *stored)
+                    .unwrap_or(true);
+
+                if !still_needs_revert {
+                    continue;
+                }
+
                 // Temporarily switch to this buffer to revert it
                 let current_active = self.active_buffer;
                 self.active_buffer = buffer_id;
