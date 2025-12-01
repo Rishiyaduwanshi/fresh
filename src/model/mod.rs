@@ -11,3 +11,4 @@ pub mod event;
 pub mod marker;
 pub mod marker_tree;
 pub mod piece_tree;
+pub mod piece_tree_diff;
