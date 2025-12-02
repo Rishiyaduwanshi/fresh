@@ -659,11 +659,31 @@ fn test_diagnostics_panel_plugin_loads() {
     let plugins_dir = project_root.join("plugins");
     fs::create_dir(&plugins_dir).unwrap();
 
-    let plugin_source = std::env::current_dir()
-        .unwrap()
-        .join("plugins/diagnostics_panel.ts");
+    let cwd = std::env::current_dir().unwrap();
+
+    // Copy the plugins/lib directory (diagnostics_panel.ts imports from it)
+    let lib_src = cwd.join("plugins/lib");
+    let lib_dest = plugins_dir.join("lib");
+    fs::create_dir(&lib_dest).unwrap();
+    for entry in fs::read_dir(&lib_src).unwrap() {
+        let entry = entry.unwrap();
+        let path = entry.path();
+        if path.extension().map(|e| e == "ts").unwrap_or(false) {
+            fs::copy(&path, lib_dest.join(path.file_name().unwrap())).unwrap();
+        }
+    }
+
+    let plugin_source = cwd.join("tests/plugins/diagnostics_panel.ts");
     let plugin_dest = plugins_dir.join("diagnostics_panel.ts");
     fs::copy(&plugin_source, &plugin_dest).unwrap();
+
+    // Fix the import path in the copied plugin (it was relative to tests/plugins/)
+    let plugin_content = fs::read_to_string(&plugin_dest).unwrap();
+    let fixed_content = plugin_content.replace(
+        "../../plugins/lib/index.ts",
+        "./lib/index.ts",
+    );
+    fs::write(&plugin_dest, fixed_content).unwrap();
 
     // Create a simple test file
     let test_file_content = "fn main() {\n    println!(\"test\");\n}\n";

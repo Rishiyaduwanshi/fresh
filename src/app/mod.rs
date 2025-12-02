@@ -541,37 +541,40 @@ impl Editor {
             None
         };
 
-        // Load TypeScript plugins from multiple directories:
-        // 1. Next to the executable (for cargo-dist installations)
-        // 2. In the working directory (for development/local usage)
+        // Load TypeScript plugins relative to the executable's real path.
+        // This resolves symlinks to find the actual installation location.
+        // Search order:
+        // 1. Next to executable (for cargo-dist: /usr/local/bin/plugins)
+        // 2. Repo root when in target/{debug,release} (for development: repo/plugins)
         if let Some(ref manager) = ts_plugin_manager {
-            let mut plugin_dirs: Vec<std::path::PathBuf> = vec![];
-
-            // Check next to executable first (for cargo-dist installations)
-            if let Ok(exe_path) = std::env::current_exe() {
-                if let Some(exe_dir) = exe_path.parent() {
-                    let exe_plugin_dir = exe_dir.join("plugins");
-                    if exe_plugin_dir.exists() {
-                        plugin_dirs.push(exe_plugin_dir);
+            let plugin_dir = std::env::current_exe()
+                .ok()
+                .and_then(|p| p.canonicalize().ok()) // Resolve symlinks
+                .and_then(|exe_path| {
+                    let exe_dir = exe_path.parent()?;
+                    // First check next to executable
+                    let adjacent = exe_dir.join("plugins");
+                    if adjacent.exists() {
+                        return Some(adjacent);
                     }
-                }
-            }
+                    // If in a cargo target directory, find repo root and check for plugins
+                    // Handles: target/debug, target/release, target/debug/deps (for tests)
+                    let mut dir = exe_dir;
+                    while let Some(parent) = dir.parent() {
+                        if dir.file_name().map(|n| n == "target").unwrap_or(false) {
+                            // Found target dir, parent is repo root
+                            let repo_plugins = parent.join("plugins");
+                            if repo_plugins.exists() {
+                                return Some(repo_plugins);
+                            }
+                            break;
+                        }
+                        dir = parent;
+                    }
+                    None
+                });
 
-            // Then check working directory (for development)
-            let working_plugin_dir = working_dir.join("plugins");
-            if working_plugin_dir.exists() && !plugin_dirs.contains(&working_plugin_dir) {
-                plugin_dirs.push(working_plugin_dir);
-            }
-
-            if plugin_dirs.is_empty() {
-                tracing::debug!(
-                    "No plugins directory found next to executable or in working dir: {:?}",
-                    working_dir
-                );
-            }
-
-            // Load from all found plugin directories
-            for plugin_dir in plugin_dirs {
+            if let Some(ref plugin_dir) = plugin_dir {
                 tracing::info!("Loading TypeScript plugins from: {:?}", plugin_dir);
                 let errors = manager.load_plugins_from_dir(&plugin_dir);
                 if !errors.is_empty() {
@@ -582,6 +585,33 @@ impl Editor {
                     #[cfg(debug_assertions)]
                     panic!(
                         "TypeScript plugin loading failed with {} error(s): {}",
+                        errors.len(),
+                        errors.join("; ")
+                    );
+                }
+            }
+
+            // Also load plugins from working directory (for project-specific plugins)
+            // Skip if same as the main plugin directory
+            let working_plugin_dir = working_dir.join("plugins");
+            let already_loaded = plugin_dir
+                .as_ref()
+                .map(|p| p == &working_plugin_dir)
+                .unwrap_or(false);
+            if !already_loaded && working_plugin_dir.exists() {
+                tracing::info!(
+                    "Loading project-specific plugins from: {:?}",
+                    working_plugin_dir
+                );
+                let errors = manager.load_plugins_from_dir(&working_plugin_dir);
+                if !errors.is_empty() {
+                    for err in &errors {
+                        tracing::error!("Project plugin load error: {}", err);
+                    }
+                    // In debug/test builds, panic to surface plugin loading errors
+                    #[cfg(debug_assertions)]
+                    panic!(
+                        "Project plugin loading failed with {} error(s): {}",
                         errors.len(),
                         errors.join("; ")
                     );
