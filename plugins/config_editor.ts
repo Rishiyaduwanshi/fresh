@@ -66,6 +66,7 @@ interface JsonSchema {
   maximum?: number;
   format?: string;
   definitions?: Record<string, JsonSchema>;
+  $defs?: Record<string, JsonSchema>; // JSON Schema draft-07+ uses $defs
 }
 
 /**
@@ -151,12 +152,16 @@ async function loadJsonSchema(): Promise<JsonSchema | null> {
  * Resolve a $ref in JSON Schema
  */
 function resolveRef(ref: string, rootSchema: JsonSchema): JsonSchema | null {
-  // Format: #/definitions/TypeName
-  if (!ref.startsWith("#/definitions/")) {
-    return null;
+  // Format: #/definitions/TypeName or #/$defs/TypeName (JSON Schema draft-07+)
+  if (ref.startsWith("#/definitions/")) {
+    const typeName = ref.substring("#/definitions/".length);
+    return rootSchema.definitions?.[typeName] ?? null;
   }
-  const typeName = ref.substring("#/definitions/".length);
-  return rootSchema.definitions?.[typeName] ?? null;
+  if (ref.startsWith("#/$defs/")) {
+    const typeName = ref.substring("#/$defs/".length);
+    return rootSchema.$defs?.[typeName] ?? null;
+  }
+  return null;
 }
 
 /**
@@ -251,11 +256,20 @@ function convertJsonSchemaToFieldSchema(
 function convertFullSchema(jsonSchema: JsonSchema): Record<string, FieldSchema> {
   const result: Record<string, FieldSchema> = {};
 
-  if (!jsonSchema.properties) {
+  // Resolve root $ref if present (common pattern: root schema points to main type)
+  let targetSchema = jsonSchema;
+  if (jsonSchema.$ref) {
+    const resolved = resolveRef(jsonSchema.$ref, jsonSchema);
+    if (resolved) {
+      targetSchema = resolved;
+    }
+  }
+
+  if (!targetSchema.properties) {
     return result;
   }
 
-  for (const [key, propSchema] of Object.entries(jsonSchema.properties)) {
+  for (const [key, propSchema] of Object.entries(targetSchema.properties)) {
     result[key] = convertJsonSchemaToFieldSchema(propSchema, jsonSchema, key);
   }
 

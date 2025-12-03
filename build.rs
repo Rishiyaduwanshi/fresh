@@ -1,6 +1,7 @@
 //! Build script for Fresh editor
 //!
 //! Generates TypeScript type definitions from Rust op definitions
+//! and JSON Schema for configuration.
 
 use std::collections::HashMap;
 use std::fs;
@@ -10,6 +11,9 @@ fn main() {
     // Rerun if source or template changes
     println!("cargo::rerun-if-changed=src/services/plugins/runtime.rs");
     println!("cargo::rerun-if-changed=types/fresh.d.ts.template");
+    println!("cargo::rerun-if-changed=src/config.rs");
+    println!("cargo::rerun-if-changed=src/services/lsp/client.rs");
+    println!("cargo::rerun-if-changed=src/services/process_limits.rs");
 
     // Skip type generation during cargo publish (files should be pre-committed)
     // DOCS_RS is set when building on docs.rs
@@ -23,6 +27,10 @@ fn main() {
 
     if let Err(e) = generate_typescript_types() {
         eprintln!("Warning: Failed to generate TypeScript types: {}", e);
+    }
+
+    if let Err(e) = generate_config_schema() {
+        eprintln!("Warning: Failed to generate config schema: {}", e);
     }
 }
 
@@ -1101,4 +1109,627 @@ fn format_method(op: &OpInfo) -> String {
         return_type
     ));
     result
+}
+
+// ==================== Config Schema Generation ====================
+
+/// Information about a config struct for JSON Schema generation
+#[derive(Debug, Clone)]
+struct ConfigStructInfo {
+    name: String,
+    fields: Vec<ConfigFieldInfo>,
+    doc_comment: String,
+    is_enum: bool,
+    enum_variants: Vec<EnumVariantInfo>,
+}
+
+/// Information about a config struct field
+#[derive(Debug, Clone)]
+struct ConfigFieldInfo {
+    name: String,
+    rust_type: String,
+    is_optional: bool,
+    default_fn: Option<String>,
+    doc_comment: String,
+    serde_default: bool,
+    serde_rename: Option<String>,
+}
+
+/// Information about an enum variant
+#[derive(Debug, Clone)]
+struct EnumVariantInfo {
+    name: String,
+    serde_rename: Option<String>,
+    doc_comment: String,
+    is_default: bool,
+}
+
+/// Generate JSON Schema for configuration
+fn generate_config_schema() -> Result<(), Box<dyn std::error::Error>> {
+    // Read config.rs and related files
+    let config_source = fs::read_to_string("src/config.rs")?;
+    let lsp_client_source = fs::read_to_string("src/services/lsp/client.rs")?;
+    let process_limits_source = fs::read_to_string("src/services/process_limits.rs")?;
+
+    // Extract struct and enum definitions
+    let mut all_structs = Vec::new();
+    all_structs.extend(extract_config_structs(&config_source));
+    all_structs.extend(extract_config_structs(&lsp_client_source));
+    all_structs.extend(extract_config_structs(&process_limits_source));
+
+    // Generate JSON Schema
+    let schema = generate_json_schema(&all_structs);
+
+    // Write to file
+    let schema_json = serde_json::to_string_pretty(&schema)?;
+    fs::write("plugins/config-schema.json", &schema_json)?;
+
+    println!(
+        "cargo::warning=Generated plugins/config-schema.json with {} definitions",
+        all_structs.len()
+    );
+
+    Ok(())
+}
+
+/// Extract config struct/enum definitions from source code
+fn extract_config_structs(source: &str) -> Vec<ConfigStructInfo> {
+    let mut structs = Vec::new();
+    let lines: Vec<&str> = source.lines().collect();
+    let mut i = 0;
+
+    while i < lines.len() {
+        let line = lines[i].trim();
+
+        // Look for #[derive(...JsonSchema...)]
+        if line.starts_with("#[derive(") && line.contains("JsonSchema") {
+            // Collect doc comments before the derive
+            let doc_comment = extract_doc_comments(&lines, i);
+
+            // Find the struct or enum definition
+            let mut def_line_idx = i + 1;
+            let mut serde_rename_all: Option<String> = None;
+
+            while def_line_idx < lines.len() {
+                let next_line = lines[def_line_idx].trim();
+                if next_line.starts_with("pub struct ") || next_line.starts_with("struct ") {
+                    if let Some(struct_info) =
+                        parse_config_struct(&lines, def_line_idx, &doc_comment)
+                    {
+                        structs.push(struct_info);
+                    }
+                    break;
+                } else if next_line.starts_with("pub enum ") || next_line.starts_with("enum ") {
+                    if let Some(enum_info) =
+                        parse_config_enum(&lines, def_line_idx, &doc_comment, &serde_rename_all)
+                    {
+                        structs.push(enum_info);
+                    }
+                    break;
+                } else if next_line.starts_with("#[serde(rename_all") {
+                    // Extract rename_all value
+                    if let Some(start) = next_line.find('"') {
+                        if let Some(end) = next_line[start + 1..].find('"') {
+                            serde_rename_all = Some(next_line[start + 1..start + 1 + end].to_string());
+                        }
+                    }
+                    def_line_idx += 1;
+                } else if next_line.starts_with("#[") || next_line.is_empty() {
+                    def_line_idx += 1;
+                } else {
+                    break;
+                }
+            }
+        }
+        i += 1;
+    }
+
+    structs
+}
+
+/// Parse a config struct definition
+fn parse_config_struct(
+    lines: &[&str],
+    struct_line_idx: usize,
+    doc_comment: &str,
+) -> Option<ConfigStructInfo> {
+    let struct_line = lines[struct_line_idx].trim();
+
+    // Extract struct name
+    let name_start = if struct_line.contains("pub struct ") {
+        struct_line.find("pub struct ")? + 11
+    } else {
+        struct_line.find("struct ")? + 7
+    };
+    let name_end = struct_line[name_start..]
+        .find([' ', '{', '<'])
+        .map(|p| name_start + p)
+        .unwrap_or(struct_line.len());
+    let name = struct_line[name_start..name_end].trim().to_string();
+
+    // Find fields
+    let mut fields = Vec::new();
+    let mut in_struct = false;
+    let mut field_doc = String::new();
+    let mut field_attrs: Vec<String> = Vec::new();
+
+    for j in struct_line_idx..lines.len() {
+        let line = lines[j].trim();
+
+        if line.contains('{') && !in_struct {
+            in_struct = true;
+            continue;
+        }
+
+        if !in_struct {
+            continue;
+        }
+
+        if line.starts_with('}') {
+            break;
+        }
+
+        // Collect doc comments
+        if line.starts_with("///") {
+            let doc = line.strip_prefix("///").unwrap_or("").trim_start();
+            if !field_doc.is_empty() {
+                field_doc.push('\n');
+            }
+            field_doc.push_str(doc);
+            continue;
+        }
+
+        // Collect serde attributes
+        if line.starts_with("#[serde(") {
+            field_attrs.push(line.to_string());
+            continue;
+        }
+
+        // Skip other attributes
+        if line.starts_with("#[") || line.is_empty() {
+            continue;
+        }
+
+        // Parse field: pub name: Type,
+        if let Some(field) = parse_config_field(line, &field_doc, &field_attrs) {
+            fields.push(field);
+        }
+        field_doc.clear();
+        field_attrs.clear();
+    }
+
+    Some(ConfigStructInfo {
+        name,
+        fields,
+        doc_comment: doc_comment.to_string(),
+        is_enum: false,
+        enum_variants: Vec::new(),
+    })
+}
+
+/// Parse a config enum definition
+fn parse_config_enum(
+    lines: &[&str],
+    enum_line_idx: usize,
+    doc_comment: &str,
+    rename_all: &Option<String>,
+) -> Option<ConfigStructInfo> {
+    let enum_line = lines[enum_line_idx].trim();
+
+    // Extract enum name
+    let name_start = if enum_line.contains("pub enum ") {
+        enum_line.find("pub enum ")? + 9
+    } else {
+        enum_line.find("enum ")? + 5
+    };
+    let name_end = enum_line[name_start..]
+        .find([' ', '{'])
+        .map(|p| name_start + p)
+        .unwrap_or(enum_line.len());
+    let name = enum_line[name_start..name_end].trim().to_string();
+
+    // Find variants
+    let mut variants = Vec::new();
+    let mut in_enum = false;
+    let mut variant_doc = String::new();
+    let mut variant_attrs: Vec<String> = Vec::new();
+
+    for j in enum_line_idx..lines.len() {
+        let line = lines[j].trim();
+
+        if line.contains('{') && !in_enum {
+            in_enum = true;
+            continue;
+        }
+
+        if !in_enum {
+            continue;
+        }
+
+        if line.starts_with('}') {
+            break;
+        }
+
+        // Collect doc comments
+        if line.starts_with("///") {
+            let doc = line.strip_prefix("///").unwrap_or("").trim_start();
+            if !variant_doc.is_empty() {
+                variant_doc.push('\n');
+            }
+            variant_doc.push_str(doc);
+            continue;
+        }
+
+        // Collect attributes
+        if line.starts_with("#[") {
+            variant_attrs.push(line.to_string());
+            continue;
+        }
+
+        if line.is_empty() {
+            continue;
+        }
+
+        // Parse variant
+        if let Some(variant) = parse_enum_variant(line, &variant_doc, &variant_attrs, rename_all) {
+            variants.push(variant);
+        }
+        variant_doc.clear();
+        variant_attrs.clear();
+    }
+
+    Some(ConfigStructInfo {
+        name,
+        fields: Vec::new(),
+        doc_comment: doc_comment.to_string(),
+        is_enum: true,
+        enum_variants: variants,
+    })
+}
+
+/// Parse a config struct field
+fn parse_config_field(line: &str, doc_comment: &str, attrs: &[String]) -> Option<ConfigFieldInfo> {
+    let line = line.trim().trim_start_matches("pub ").trim_end_matches(',');
+
+    let colon_pos = line.find(':')?;
+    let name = line[..colon_pos].trim().to_string();
+    let rust_type = line[colon_pos + 1..].trim().to_string();
+
+    let is_optional = rust_type.starts_with("Option<");
+
+    // Parse serde attributes
+    let mut default_fn = None;
+    let mut serde_default = false;
+    let mut serde_rename = None;
+
+    for attr in attrs {
+        if attr.contains("default") {
+            serde_default = true;
+            // Check for default = "fn_name"
+            if let Some(eq_pos) = attr.find("default = \"") {
+                let start = eq_pos + 11;
+                if let Some(end) = attr[start..].find('"') {
+                    default_fn = Some(attr[start..start + end].to_string());
+                }
+            }
+        }
+        if attr.contains("rename = \"") {
+            if let Some(start) = attr.find("rename = \"") {
+                let start = start + 10;
+                if let Some(end) = attr[start..].find('"') {
+                    serde_rename = Some(attr[start..start + end].to_string());
+                }
+            }
+        }
+    }
+
+    Some(ConfigFieldInfo {
+        name,
+        rust_type,
+        is_optional,
+        default_fn,
+        doc_comment: doc_comment.to_string(),
+        serde_default,
+        serde_rename,
+    })
+}
+
+/// Parse an enum variant
+fn parse_enum_variant(
+    line: &str,
+    doc_comment: &str,
+    attrs: &[String],
+    rename_all: &Option<String>,
+) -> Option<EnumVariantInfo> {
+    let line = line.trim().trim_end_matches(',');
+
+    // Handle struct/tuple variants: Variant { ... } or Variant(...)
+    let name = if let Some(brace) = line.find(['{', '(']) {
+        line[..brace].trim().to_string()
+    } else {
+        line.to_string()
+    };
+
+    let mut serde_rename = None;
+    let mut is_default = false;
+
+    for attr in attrs {
+        if attr.contains("#[default]") {
+            is_default = true;
+        }
+        if attr.contains("rename = \"") {
+            if let Some(start) = attr.find("rename = \"") {
+                let start = start + 10;
+                if let Some(end) = attr[start..].find('"') {
+                    serde_rename = Some(attr[start..start + end].to_string());
+                }
+            }
+        }
+    }
+
+    // Apply rename_all transformation if no explicit rename
+    if serde_rename.is_none() {
+        if let Some(ref style) = rename_all {
+            serde_rename = Some(apply_rename_style(&name, style));
+        }
+    }
+
+    Some(EnumVariantInfo {
+        name,
+        serde_rename,
+        doc_comment: doc_comment.to_string(),
+        is_default,
+    })
+}
+
+/// Apply serde rename_all transformation
+fn apply_rename_style(name: &str, style: &str) -> String {
+    match style {
+        "lowercase" => name.to_lowercase(),
+        "UPPERCASE" => name.to_uppercase(),
+        "camelCase" => {
+            let mut result = String::new();
+            let mut capitalize_next = false;
+            for (i, c) in name.chars().enumerate() {
+                if i == 0 {
+                    result.push(c.to_ascii_lowercase());
+                } else if c == '_' {
+                    capitalize_next = true;
+                } else if capitalize_next {
+                    result.push(c.to_ascii_uppercase());
+                    capitalize_next = false;
+                } else {
+                    result.push(c);
+                }
+            }
+            result
+        }
+        "snake_case" => {
+            let mut result = String::new();
+            for (i, c) in name.chars().enumerate() {
+                if c.is_uppercase() && i > 0 {
+                    result.push('_');
+                }
+                result.push(c.to_ascii_lowercase());
+            }
+            result
+        }
+        "kebab-case" => {
+            let mut result = String::new();
+            for (i, c) in name.chars().enumerate() {
+                if c.is_uppercase() && i > 0 {
+                    result.push('-');
+                }
+                result.push(c.to_ascii_lowercase());
+            }
+            result
+        }
+        _ => name.to_string(),
+    }
+}
+
+/// Convert Rust type to JSON Schema type
+fn rust_type_to_json_schema(
+    rust_type: &str,
+    definitions: &HashMap<String, serde_json::Value>,
+) -> serde_json::Value {
+    let rust_type = rust_type.trim();
+
+    // Handle Option<T>
+    if rust_type.starts_with("Option<") && rust_type.ends_with('>') {
+        let inner = &rust_type[7..rust_type.len() - 1];
+        let inner_schema = rust_type_to_json_schema(inner, definitions);
+        return serde_json::json!({
+            "anyOf": [
+                inner_schema,
+                { "type": "null" }
+            ]
+        });
+    }
+
+    // Handle Vec<T>
+    if rust_type.starts_with("Vec<") && rust_type.ends_with('>') {
+        let inner = &rust_type[4..rust_type.len() - 1];
+        let inner_schema = rust_type_to_json_schema(inner, definitions);
+        return serde_json::json!({
+            "type": "array",
+            "items": inner_schema
+        });
+    }
+
+    // Handle HashMap<K, V>
+    if rust_type.starts_with("HashMap<") && rust_type.ends_with('>') {
+        let inner = &rust_type[8..rust_type.len() - 1];
+        // Find the comma separating K and V at depth 0
+        let mut depth = 0;
+        let mut comma_pos = None;
+        for (i, ch) in inner.chars().enumerate() {
+            match ch {
+                '<' => depth += 1,
+                '>' => depth -= 1,
+                ',' if depth == 0 => {
+                    comma_pos = Some(i);
+                    break;
+                }
+                _ => {}
+            }
+        }
+        if let Some(pos) = comma_pos {
+            let value_type = &inner[pos + 1..].trim();
+            let value_schema = rust_type_to_json_schema(value_type, definitions);
+            return serde_json::json!({
+                "type": "object",
+                "additionalProperties": value_schema
+            });
+        }
+        return serde_json::json!({ "type": "object" });
+    }
+
+    // Handle PathBuf
+    if rust_type == "std::path::PathBuf" || rust_type == "PathBuf" {
+        return serde_json::json!({ "type": "string" });
+    }
+
+    // Handle serde_json::Value
+    if rust_type == "serde_json::Value" {
+        return serde_json::json!({});
+    }
+
+    // Basic types
+    match rust_type {
+        "String" | "&str" => serde_json::json!({ "type": "string" }),
+        "bool" => serde_json::json!({ "type": "boolean" }),
+        "u8" | "u16" | "u32" | "u64" | "usize" | "i8" | "i16" | "i32" | "i64" | "isize" => {
+            serde_json::json!({ "type": "integer" })
+        }
+        "f32" | "f64" => serde_json::json!({ "type": "number" }),
+        _ => {
+            // Check if it's a known definition
+            if definitions.contains_key(rust_type) {
+                serde_json::json!({ "$ref": format!("#/$defs/{}", rust_type) })
+            } else {
+                // Unknown type, allow anything
+                serde_json::json!({})
+            }
+        }
+    }
+}
+
+/// Generate full JSON Schema from extracted structs
+fn generate_json_schema(structs: &[ConfigStructInfo]) -> serde_json::Value {
+    let mut definitions: HashMap<String, serde_json::Value> = HashMap::new();
+
+    // First pass: collect all definition names
+    let def_names: std::collections::HashSet<String> =
+        structs.iter().map(|s| s.name.clone()).collect();
+
+    // Second pass: generate definitions
+    for struct_info in structs {
+        let schema = if struct_info.is_enum {
+            generate_enum_schema(struct_info)
+        } else {
+            generate_struct_schema(struct_info, &def_names)
+        };
+        definitions.insert(struct_info.name.clone(), schema);
+    }
+
+    // Create the root schema referencing Config
+    serde_json::json!({
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "title": "Fresh Editor Configuration",
+        "$ref": "#/$defs/Config",
+        "$defs": definitions
+    })
+}
+
+/// Generate JSON Schema for a struct
+fn generate_struct_schema(
+    struct_info: &ConfigStructInfo,
+    def_names: &std::collections::HashSet<String>,
+) -> serde_json::Value {
+    let definitions: HashMap<String, serde_json::Value> = def_names
+        .iter()
+        .map(|name| (name.clone(), serde_json::json!({})))
+        .collect();
+
+    let mut properties: HashMap<String, serde_json::Value> = HashMap::new();
+    let mut required: Vec<String> = Vec::new();
+
+    for field in &struct_info.fields {
+        let field_name = field
+            .serde_rename
+            .clone()
+            .unwrap_or_else(|| field.name.clone());
+        let mut field_schema = rust_type_to_json_schema(&field.rust_type, &definitions);
+
+        // Add description if present
+        if !field.doc_comment.is_empty() {
+            if let Some(obj) = field_schema.as_object_mut() {
+                obj.insert(
+                    "description".to_string(),
+                    serde_json::Value::String(field.doc_comment.clone()),
+                );
+            }
+        }
+
+        properties.insert(field_name.clone(), field_schema);
+
+        // Field is required if it's not optional and doesn't have a default
+        if !field.is_optional && !field.serde_default && field.default_fn.is_none() {
+            required.push(field_name);
+        }
+    }
+
+    let mut schema = serde_json::json!({
+        "type": "object",
+        "properties": properties
+    });
+
+    if !required.is_empty() {
+        schema["required"] = serde_json::json!(required);
+    }
+
+    if !struct_info.doc_comment.is_empty() {
+        schema["description"] = serde_json::Value::String(struct_info.doc_comment.clone());
+    }
+
+    schema
+}
+
+/// Generate JSON Schema for an enum
+fn generate_enum_schema(enum_info: &ConfigStructInfo) -> serde_json::Value {
+    let values: Vec<String> = enum_info
+        .enum_variants
+        .iter()
+        .map(|v| {
+            v.serde_rename
+                .clone()
+                .unwrap_or_else(|| v.name.to_lowercase())
+        })
+        .collect();
+
+    let default_value = enum_info
+        .enum_variants
+        .iter()
+        .find(|v| v.is_default)
+        .map(|v| {
+            v.serde_rename
+                .clone()
+                .unwrap_or_else(|| v.name.to_lowercase())
+        });
+
+    let mut schema = serde_json::json!({
+        "type": "string",
+        "enum": values
+    });
+
+    if let Some(default) = default_value {
+        schema["default"] = serde_json::Value::String(default);
+    }
+
+    if !enum_info.doc_comment.is_empty() {
+        schema["description"] = serde_json::Value::String(enum_info.doc_comment.clone());
+    }
+
+    schema
 }

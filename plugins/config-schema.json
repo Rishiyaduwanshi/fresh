@@ -1,1066 +1,398 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "title": "Config",
-  "description": "Main configuration structure",
-  "type": "object",
-  "properties": {
-    "active_keybinding_map": {
-      "description": "Active keybinding map name (e.g., \"default\", \"emacs\", \"vscode\", or a custom name)",
-      "default": "default",
-      "type": "string"
-    },
-    "editor": {
-      "default": {
-        "tab_size": 4,
-        "auto_indent": true,
-        "line_numbers": true,
-        "relative_line_numbers": false,
-        "scroll_offset": 3,
-        "syntax_highlighting": true,
-        "line_wrap": true,
-        "highlight_timeout_ms": 5,
-        "snapshot_interval": 100,
-        "large_file_threshold_bytes": 1048576,
-        "estimated_line_length": 80,
-        "enable_inlay_hints": true,
-        "recovery_enabled": true,
-        "auto_save_interval_secs": 2
-      },
-      "allOf": [
-        {
-          "$ref": "#/definitions/EditorConfig"
-        }
-      ]
-    },
-    "file_explorer": {
-      "default": {
-        "respect_gitignore": true,
-        "show_hidden": false,
-        "show_gitignored": false,
-        "custom_ignore_patterns": [],
-        "width": 0.30000001192092896
-      },
-      "allOf": [
-        {
-          "$ref": "#/definitions/FileExplorerConfig"
-        }
-      ]
-    },
-    "keybinding_maps": {
-      "description": "Named keybinding maps (user can define custom maps here) Each map can optionally inherit from another map",
-      "default": {},
-      "type": "object",
-      "additionalProperties": {
-        "$ref": "#/definitions/KeymapConfig"
-      }
-    },
-    "keybindings": {
-      "description": "Custom keybindings (overrides for the active map)",
-      "default": [],
-      "type": "array",
-      "items": {
-        "$ref": "#/definitions/Keybinding"
-      }
-    },
-    "languages": {
-      "default": {},
-      "type": "object",
-      "additionalProperties": {
-        "$ref": "#/definitions/LanguageConfig"
-      }
-    },
-    "lsp": {
-      "default": {},
-      "type": "object",
-      "additionalProperties": {
-        "$ref": "#/definitions/LspServerConfig"
-      }
-    },
-    "menu": {
-      "default": {
-        "menus": [
-          {
-            "label": "File",
-            "items": [
-              {
-                "label": "New File",
-                "action": "new",
-                "args": {},
-                "when": null,
-                "checkbox": null
-              },
-              {
-                "label": "Open File...",
-                "action": "open",
-                "args": {},
-                "when": null,
-                "checkbox": null
-              },
-              {
-                "separator": true
-              },
-              {
-                "label": "Save",
-                "action": "save",
-                "args": {},
-                "when": null,
-                "checkbox": null
-              },
-              {
-                "label": "Save As...",
-                "action": "save_as",
-                "args": {},
-                "when": null,
-                "checkbox": null
-              },
-              {
-                "label": "Revert",
-                "action": "revert",
-                "args": {},
-                "when": null,
-                "checkbox": null
-              },
-              {
-                "separator": true
-              },
-              {
-                "label": "Close Buffer",
-                "action": "close",
-                "args": {},
-                "when": null,
-                "checkbox": null
-              },
-              {
-                "label": "Quit",
-                "action": "quit",
-                "args": {},
-                "when": null,
-                "checkbox": null
-              }
-            ]
-          },
-          {
-            "label": "Edit",
-            "items": [
-              {
-                "label": "Undo",
-                "action": "undo",
-                "args": {},
-                "when": null,
-                "checkbox": null
-              },
-              {
-                "label": "Redo",
-                "action": "redo",
-                "args": {},
-                "when": null,
-                "checkbox": null
-              },
-              {
-                "separator": true
-              },
-              {
-                "label": "Cut",
-                "action": "cut",
-                "args": {},
-                "when": null,
-                "checkbox": null
-              },
-              {
-                "label": "Copy",
-                "action": "copy",
-                "args": {},
-                "when": null,
-                "checkbox": null
-              },
-              {
-                "label": "Paste",
-                "action": "paste",
-                "args": {},
-                "when": null,
-                "checkbox": null
-              },
-              {
-                "separator": true
-              },
-              {
-                "label": "Select All",
-                "action": "select_all",
-                "args": {},
-                "when": null,
-                "checkbox": null
-              },
-              {
-                "separator": true
-              },
-              {
-                "label": "Find...",
-                "action": "search",
-                "args": {},
-                "when": null,
-                "checkbox": null
-              },
-              {
-                "label": "Find in Selection",
-                "action": "find_in_selection",
-                "args": {},
-                "when": "has_selection",
-                "checkbox": null
-              },
-              {
-                "label": "Find Next",
-                "action": "find_next",
-                "args": {},
-                "when": null,
-                "checkbox": null
-              },
-              {
-                "label": "Find Previous",
-                "action": "find_previous",
-                "args": {},
-                "when": null,
-                "checkbox": null
-              },
-              {
-                "label": "Replace...",
-                "action": "query_replace",
-                "args": {},
-                "when": null,
-                "checkbox": null
-              },
-              {
-                "separator": true
-              },
-              {
-                "label": "Delete Line",
-                "action": "delete_line",
-                "args": {},
-                "when": null,
-                "checkbox": null
-              }
-            ]
-          },
-          {
-            "label": "View",
-            "items": [
-              {
-                "label": "File Explorer",
-                "action": "toggle_file_explorer",
-                "args": {},
-                "when": null,
-                "checkbox": "file_explorer"
-              },
-              {
-                "separator": true
-              },
-              {
-                "label": "Line Numbers",
-                "action": "toggle_line_numbers",
-                "args": {},
-                "when": null,
-                "checkbox": "line_numbers"
-              },
-              {
-                "label": "Line Wrap",
-                "action": "toggle_line_wrap",
-                "args": {},
-                "when": null,
-                "checkbox": "line_wrap"
-              },
-              {
-                "label": "Mouse Support",
-                "action": "toggle_mouse_capture",
-                "args": {},
-                "when": null,
-                "checkbox": "mouse_capture"
-              },
-              {
-                "separator": true
-              },
-              {
-                "label": "Set Background...",
-                "action": "set_background",
-                "args": {},
-                "when": null,
-                "checkbox": null
-              },
-              {
-                "label": "Set Background Blend...",
-                "action": "set_background_blend",
-                "args": {},
-                "when": null,
-                "checkbox": null
-              },
-              {
-                "label": "Set Compose Width...",
-                "action": "set_compose_width",
-                "args": {},
-                "when": null,
-                "checkbox": null
-              },
-              {
-                "separator": true
-              },
-              {
-                "label": "Select Theme...",
-                "action": "select_theme",
-                "args": {},
-                "when": null,
-                "checkbox": null
-              },
-              {
-                "separator": true
-              },
-              {
-                "label": "Split Horizontal",
-                "action": "split_horizontal",
-                "args": {},
-                "when": null,
-                "checkbox": null
-              },
-              {
-                "label": "Split Vertical",
-                "action": "split_vertical",
-                "args": {},
-                "when": null,
-                "checkbox": null
-              },
-              {
-                "label": "Close Split",
-                "action": "close_split",
-                "args": {},
-                "when": null,
-                "checkbox": null
-              },
-              {
-                "label": "Focus Next Split",
-                "action": "next_split",
-                "args": {},
-                "when": null,
-                "checkbox": null
-              },
-              {
-                "label": "Focus Previous Split",
-                "action": "prev_split",
-                "args": {},
-                "when": null,
-                "checkbox": null
-              },
-              {
-                "separator": true
-              },
-              {
-                "label": "Keybinding Style",
-                "items": [
-                  {
-                    "label": "Default",
-                    "action": "switch_keybinding_map",
-                    "args": {
-                      "map": "default"
-                    },
-                    "when": null,
-                    "checkbox": null
-                  },
-                  {
-                    "label": "Emacs",
-                    "action": "switch_keybinding_map",
-                    "args": {
-                      "map": "emacs"
-                    },
-                    "when": null,
-                    "checkbox": null
-                  },
-                  {
-                    "label": "VSCode",
-                    "action": "switch_keybinding_map",
-                    "args": {
-                      "map": "vscode"
-                    },
-                    "when": null,
-                    "checkbox": null
-                  }
-                ]
-              }
-            ]
-          },
-          {
-            "label": "Selection",
-            "items": [
-              {
-                "label": "Select All",
-                "action": "select_all",
-                "args": {},
-                "when": null,
-                "checkbox": null
-              },
-              {
-                "label": "Select Word",
-                "action": "select_word",
-                "args": {},
-                "when": null,
-                "checkbox": null
-              },
-              {
-                "label": "Select Line",
-                "action": "select_line",
-                "args": {},
-                "when": null,
-                "checkbox": null
-              },
-              {
-                "label": "Expand Selection",
-                "action": "expand_selection",
-                "args": {},
-                "when": null,
-                "checkbox": null
-              },
-              {
-                "separator": true
-              },
-              {
-                "label": "Add Cursor Above",
-                "action": "add_cursor_above",
-                "args": {},
-                "when": null,
-                "checkbox": null
-              },
-              {
-                "label": "Add Cursor Below",
-                "action": "add_cursor_below",
-                "args": {},
-                "when": null,
-                "checkbox": null
-              },
-              {
-                "label": "Add Cursor at Next Match",
-                "action": "add_cursor_next_match",
-                "args": {},
-                "when": null,
-                "checkbox": null
-              },
-              {
-                "label": "Remove Secondary Cursors",
-                "action": "remove_secondary_cursors",
-                "args": {},
-                "when": null,
-                "checkbox": null
-              }
-            ]
-          },
-          {
-            "label": "Go",
-            "items": [
-              {
-                "label": "Go to Line...",
-                "action": "goto_line",
-                "args": {},
-                "when": null,
-                "checkbox": null
-              },
-              {
-                "label": "Go to Definition",
-                "action": "lsp_goto_definition",
-                "args": {},
-                "when": null,
-                "checkbox": null
-              },
-              {
-                "label": "Find References",
-                "action": "lsp_references",
-                "args": {},
-                "when": null,
-                "checkbox": null
-              },
-              {
-                "separator": true
-              },
-              {
-                "label": "Next Buffer",
-                "action": "next_buffer",
-                "args": {},
-                "when": null,
-                "checkbox": null
-              },
-              {
-                "label": "Previous Buffer",
-                "action": "prev_buffer",
-                "args": {},
-                "when": null,
-                "checkbox": null
-              },
-              {
-                "separator": true
-              },
-              {
-                "label": "Command Palette...",
-                "action": "command_palette",
-                "args": {},
-                "when": null,
-                "checkbox": null
-              }
-            ]
-          },
-          {
-            "label": "Explorer",
-            "items": [
-              {
-                "label": "New File",
-                "action": "file_explorer_new_file",
-                "args": {},
-                "when": "file_explorer_focused",
-                "checkbox": null
-              },
-              {
-                "label": "New Folder",
-                "action": "file_explorer_new_directory",
-                "args": {},
-                "when": "file_explorer_focused",
-                "checkbox": null
-              },
-              {
-                "separator": true
-              },
-              {
-                "label": "Open",
-                "action": "file_explorer_open",
-                "args": {},
-                "when": "file_explorer_focused",
-                "checkbox": null
-              },
-              {
-                "label": "Rename",
-                "action": "file_explorer_rename",
-                "args": {},
-                "when": "file_explorer_focused",
-                "checkbox": null
-              },
-              {
-                "label": "Delete",
-                "action": "file_explorer_delete",
-                "args": {},
-                "when": "file_explorer_focused",
-                "checkbox": null
-              },
-              {
-                "separator": true
-              },
-              {
-                "label": "Refresh",
-                "action": "file_explorer_refresh",
-                "args": {},
-                "when": "file_explorer_focused",
-                "checkbox": null
-              },
-              {
-                "separator": true
-              },
-              {
-                "label": "Show Hidden Files",
-                "action": "file_explorer_toggle_hidden",
-                "args": {},
-                "when": "file_explorer",
-                "checkbox": "file_explorer_show_hidden"
-              },
-              {
-                "label": "Show Gitignored Files",
-                "action": "file_explorer_toggle_gitignored",
-                "args": {},
-                "when": "file_explorer",
-                "checkbox": "file_explorer_show_gitignored"
-              }
-            ]
-          },
-          {
-            "label": "Help",
-            "items": [
-              {
-                "label": "Show Fresh Manual",
-                "action": "show_help",
-                "args": {},
-                "when": null,
-                "checkbox": null
-              },
-              {
-                "label": "Keyboard Shortcuts",
-                "action": "keyboard_shortcuts",
-                "args": {},
-                "when": null,
-                "checkbox": null
-              }
-            ]
-          }
-        ]
-      },
-      "allOf": [
-        {
-          "$ref": "#/definitions/MenuConfig"
-        }
-      ]
-    },
-    "theme": {
-      "default": "high-contrast",
-      "type": "string"
-    }
-  },
-  "definitions": {
-    "EditorConfig": {
-      "description": "Editor behavior configuration",
-      "type": "object",
-      "properties": {
-        "auto_indent": {
-          "default": true,
-          "type": "boolean"
-        },
-        "auto_save_interval_secs": {
-          "description": "Auto-save interval in seconds for file recovery Modified buffers are saved to recovery files at this interval. Default: 2 seconds for fast recovery with minimal data loss. Set to 0 to disable periodic auto-save (manual recovery only).",
-          "default": 2,
-          "type": "integer",
-          "format": "uint32",
-          "minimum": 0.0
-        },
-        "enable_inlay_hints": {
-          "description": "Whether to enable LSP inlay hints (type hints, parameter hints, etc.)",
-          "default": true,
-          "type": "boolean"
-        },
-        "estimated_line_length": {
-          "description": "Estimated average line length in bytes (used for large file line estimation) This is used by LineIterator to estimate line positions in large files without line metadata. Typical values: 80-120 bytes.",
-          "default": 80,
-          "type": "integer",
-          "format": "uint",
-          "minimum": 0.0
-        },
-        "highlight_timeout_ms": {
-          "default": 5,
-          "type": "integer",
-          "format": "uint64",
-          "minimum": 0.0
-        },
-        "large_file_threshold_bytes": {
-          "description": "File size threshold in bytes for \"large file\" behavior Files larger than this will: - Skip LSP features - Use constant-size scrollbar thumb (1 char) Files smaller will count actual lines for accurate scrollbar rendering",
-          "default": 1048576,
-          "type": "integer",
-          "format": "uint64",
-          "minimum": 0.0
-        },
-        "line_numbers": {
-          "default": true,
-          "type": "boolean"
-        },
-        "line_wrap": {
-          "default": true,
-          "type": "boolean"
-        },
-        "recovery_enabled": {
-          "description": "Whether to enable file recovery (Emacs-style auto-save) When enabled, buffers are periodically saved to recovery files so they can be recovered if the editor crashes.",
-          "default": true,
-          "type": "boolean"
-        },
-        "relative_line_numbers": {
-          "default": false,
-          "type": "boolean"
-        },
-        "scroll_offset": {
-          "default": 3,
-          "type": "integer",
-          "format": "uint",
-          "minimum": 0.0
-        },
-        "snapshot_interval": {
-          "default": 100,
-          "type": "integer",
-          "format": "uint",
-          "minimum": 0.0
-        },
-        "syntax_highlighting": {
-          "default": true,
-          "type": "boolean"
-        },
-        "tab_size": {
-          "default": 4,
-          "type": "integer",
-          "format": "uint",
-          "minimum": 0.0
-        }
-      }
-    },
-    "FileExplorerConfig": {
-      "description": "File explorer configuration",
-      "type": "object",
-      "properties": {
-        "custom_ignore_patterns": {
-          "description": "Custom patterns to ignore (in addition to .gitignore)",
-          "default": [],
-          "type": "array",
-          "items": {
-            "type": "string"
-          }
-        },
-        "respect_gitignore": {
-          "description": "Whether to respect .gitignore files",
-          "default": true,
-          "type": "boolean"
-        },
-        "show_gitignored": {
-          "description": "Whether to show gitignored files by default",
-          "default": false,
-          "type": "boolean"
-        },
-        "show_hidden": {
-          "description": "Whether to show hidden files (starting with .) by default",
-          "default": false,
-          "type": "boolean"
-        },
-        "width": {
-          "description": "Width of file explorer as percentage (0.0 to 1.0)",
-          "default": 0.30000001192092896,
-          "type": "number",
-          "format": "float"
-        }
-      }
-    },
-    "HighlighterPreference": {
-      "description": "Preference for which syntax highlighting backend to use",
-      "oneOf": [
-        {
-          "description": "Use tree-sitter if available, fall back to TextMate",
-          "type": "string",
-          "enum": [
-            "auto"
-          ]
-        },
-        {
-          "description": "Force tree-sitter only (no highlighting if unavailable)",
-          "type": "string",
-          "enum": [
-            "tree-sitter"
-          ]
-        },
-        {
-          "description": "Force TextMate grammar (skip tree-sitter even if available)",
-          "type": "string",
-          "enum": [
-            "textmate"
-          ]
-        }
-      ]
-    },
-    "KeyPress": {
-      "description": "A single key in a sequence",
-      "type": "object",
-      "required": [
-        "key"
-      ],
-      "properties": {
-        "key": {
-          "description": "Key name (e.g., \"a\", \"Enter\", \"F1\")",
-          "type": "string"
-        },
-        "modifiers": {
-          "description": "Modifiers (e.g., [\"ctrl\"], [\"ctrl\", \"shift\"])",
-          "default": [],
-          "type": "array",
-          "items": {
-            "type": "string"
-          }
-        }
-      }
-    },
+  "title": "Fresh Editor Configuration",
+  "$ref": "#/$defs/Config",
+  "$defs": {
     "Keybinding": {
-      "description": "Keybinding definition",
       "type": "object",
+      "properties": {
+        "modifiers": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Modifiers (e.g., [\"ctrl\"], [\"ctrl\", \"shift\"]) - for single-key bindings"
+        },
+        "args": {
+          "type": "object",
+          "additionalProperties": {},
+          "description": "Optional arguments for the action"
+        },
+        "keys": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/KeyPress"
+          },
+          "description": "Key sequence for chord bindings (e.g., [{\"key\": \"x\", \"modifiers\": [\"ctrl\"]}, {\"key\": \"s\", \"modifiers\": [\"ctrl\"]}])\nIf present, takes precedence over key + modifiers"
+        },
+        "key": {
+          "type": "string",
+          "description": "Key name (e.g., \"a\", \"Enter\", \"F1\") - for single-key bindings"
+        },
+        "action": {
+          "type": "string",
+          "description": "Action to perform (e.g., \"insert_char\", \"move_left\")"
+        },
+        "when": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Optional condition (e.g., \"mode == insert\")"
+        }
+      },
       "required": [
         "action"
       ],
+      "description": "Keybinding definition"
+    },
+    "KeyPress": {
+      "type": "object",
       "properties": {
-        "action": {
-          "description": "Action to perform (e.g., \"insert_char\", \"move_left\")",
-          "type": "string"
-        },
-        "args": {
-          "description": "Optional arguments for the action",
-          "default": {},
-          "type": "object",
-          "additionalProperties": true
-        },
         "key": {
-          "description": "Key name (e.g., \"a\", \"Enter\", \"F1\") - for single-key bindings",
-          "type": "string"
-        },
-        "keys": {
-          "description": "Key sequence for chord bindings (e.g., [{\"key\": \"x\", \"modifiers\": [\"ctrl\"]}, {\"key\": \"s\", \"modifiers\": [\"ctrl\"]}]) If present, takes precedence over key + modifiers",
-          "type": "array",
-          "items": {
-            "$ref": "#/definitions/KeyPress"
-          }
+          "type": "string",
+          "description": "Key name (e.g., \"a\", \"Enter\", \"F1\")"
         },
         "modifiers": {
-          "description": "Modifiers (e.g., [\"ctrl\"], [\"ctrl\", \"shift\"]) - for single-key bindings",
           "type": "array",
           "items": {
             "type": "string"
-          }
-        },
-        "when": {
-          "description": "Optional condition (e.g., \"mode == insert\")",
-          "default": null,
-          "type": [
-            "string",
-            "null"
-          ]
+          },
+          "description": "Modifiers (e.g., [\"ctrl\"], [\"ctrl\", \"shift\"])"
         }
-      }
+      },
+      "required": [
+        "key"
+      ],
+      "description": "A single key in a sequence"
     },
-    "KeymapConfig": {
-      "description": "Keymap configuration (for built-in and user-defined keymaps)",
+    "EditorConfig": {
       "type": "object",
       "properties": {
-        "bindings": {
-          "description": "Keybindings defined in this keymap",
-          "default": [],
+        "estimated_line_length": {
+          "type": "integer",
+          "description": "Estimated average line length in bytes (used for large file line estimation)\nThis is used by LineIterator to estimate line positions in large files\nwithout line metadata. Typical values: 80-120 bytes."
+        },
+        "highlight_timeout_ms": {
+          "type": "integer"
+        },
+        "syntax_highlighting": {
+          "type": "boolean"
+        },
+        "snapshot_interval": {
+          "type": "integer"
+        },
+        "tab_size": {
+          "type": "integer"
+        },
+        "recovery_enabled": {
+          "type": "boolean",
+          "description": "Whether to enable file recovery (Emacs-style auto-save)\nWhen enabled, buffers are periodically saved to recovery files\nso they can be recovered if the editor crashes."
+        },
+        "large_file_threshold_bytes": {
+          "type": "integer",
+          "description": "File size threshold in bytes for \"large file\" behavior\nFiles larger than this will:\n- Skip LSP features\n- Use constant-size scrollbar thumb (1 char)\nFiles smaller will count actual lines for accurate scrollbar rendering"
+        },
+        "auto_save_interval_secs": {
+          "type": "integer",
+          "description": "Auto-save interval in seconds for file recovery\nModified buffers are saved to recovery files at this interval.\nDefault: 2 seconds for fast recovery with minimal data loss.\nSet to 0 to disable periodic auto-save (manual recovery only)."
+        },
+        "auto_indent": {
+          "type": "boolean"
+        },
+        "enable_inlay_hints": {
+          "type": "boolean",
+          "description": "Whether to enable LSP inlay hints (type hints, parameter hints, etc.)"
+        },
+        "line_numbers": {
+          "type": "boolean"
+        },
+        "relative_line_numbers": {
+          "type": "boolean"
+        },
+        "line_wrap": {
+          "type": "boolean"
+        },
+        "scroll_offset": {
+          "type": "integer"
+        }
+      },
+      "description": "Editor behavior configuration"
+    },
+    "FileExplorerConfig": {
+      "type": "object",
+      "properties": {
+        "show_gitignored": {
+          "type": "boolean",
+          "description": "Whether to show gitignored files by default"
+        },
+        "width": {
+          "type": "number",
+          "description": "Width of file explorer as percentage (0.0 to 1.0)"
+        },
+        "respect_gitignore": {
+          "type": "boolean",
+          "description": "Whether to respect .gitignore files"
+        },
+        "show_hidden": {
+          "type": "boolean",
+          "description": "Whether to show hidden files (starting with .) by default"
+        },
+        "custom_ignore_patterns": {
           "type": "array",
           "items": {
-            "$ref": "#/definitions/Keybinding"
-          }
-        },
-        "inherits": {
-          "description": "Optional parent keymap to inherit from",
-          "type": [
-            "string",
-            "null"
-          ]
+            "type": "string"
+          },
+          "description": "Custom patterns to ignore (in addition to .gitignore)"
         }
-      }
+      },
+      "description": "File explorer configuration"
     },
     "LanguageConfig": {
-      "description": "Language-specific configuration",
       "type": "object",
+      "properties": {
+        "auto_indent": {
+          "type": "boolean",
+          "description": "Whether to auto-indent"
+        },
+        "extensions": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "File extensions for this language"
+        },
+        "highlighter": {
+          "$ref": "#/$defs/HighlighterPreference",
+          "description": "Preferred highlighter backend (auto, tree-sitter, or textmate)"
+        },
+        "comment_prefix": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Comment prefix"
+        },
+        "textmate_grammar": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Path to custom TextMate grammar file (optional)\nIf specified, this grammar will be used when highlighter is \"textmate\""
+        },
+        "grammar": {
+          "type": "string",
+          "description": "Tree-sitter grammar name"
+        }
+      },
       "required": [
         "extensions",
         "grammar"
       ],
-      "properties": {
-        "auto_indent": {
-          "description": "Whether to auto-indent",
-          "default": true,
-          "type": "boolean"
-        },
-        "comment_prefix": {
-          "description": "Comment prefix",
-          "default": null,
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "extensions": {
-          "description": "File extensions for this language",
-          "type": "array",
-          "items": {
-            "type": "string"
-          }
-        },
-        "grammar": {
-          "description": "Tree-sitter grammar name",
-          "type": "string"
-        },
-        "highlighter": {
-          "description": "Preferred highlighter backend (auto, tree-sitter, or textmate)",
-          "default": "auto",
-          "allOf": [
-            {
-              "$ref": "#/definitions/HighlighterPreference"
-            }
-          ]
-        },
-        "textmate_grammar": {
-          "description": "Path to custom TextMate grammar file (optional) If specified, this grammar will be used when highlighter is \"textmate\"",
-          "default": null,
-          "type": [
-            "string",
-            "null"
-          ]
-        }
-      }
+      "description": "Language-specific configuration"
+    },
+    "MenuItem": {
+      "type": "string",
+      "enum": [
+        "separator",
+        "action",
+        "label: string",
+        "action: string",
+        "args: hashmap<string, serde_json::value>",
+        "when: option<string>",
+        "checkbox: option<string>"
+      ],
+      "description": "A menu item (action, separator, or submenu)"
     },
     "LspServerConfig": {
-      "description": "Configuration for a language server",
       "type": "object",
-      "required": [
-        "args",
-        "command"
-      ],
       "properties": {
+        "process_limits": {
+          "$ref": "#/$defs/ProcessLimits",
+          "description": "Process resource limits (memory and CPU)"
+        },
+        "auto_start": {
+          "type": "boolean",
+          "description": "Whether to auto-start this LSP server when opening matching files\nIf false (default), the server must be started manually via command palette"
+        },
+        "command": {
+          "type": "string",
+          "description": "Command to spawn the server"
+        },
         "args": {
-          "description": "Arguments to pass to the server",
           "type": "array",
           "items": {
             "type": "string"
-          }
-        },
-        "auto_start": {
-          "description": "Whether to auto-start this LSP server when opening matching files If false (default), the server must be started manually via command palette",
-          "default": false,
-          "type": "boolean"
-        },
-        "command": {
-          "description": "Command to spawn the server",
-          "type": "string"
+          },
+          "description": "Arguments to pass to the server"
         },
         "enabled": {
-          "description": "Whether the server is enabled",
-          "default": true,
-          "type": "boolean"
-        },
-        "process_limits": {
-          "description": "Process resource limits (memory and CPU)",
-          "default": {
-            "max_memory_mb": 6656,
-            "max_cpu_percent": 90,
-            "enabled": true
-          },
-          "allOf": [
-            {
-              "$ref": "#/definitions/ProcessLimits"
-            }
-          ]
+          "type": "boolean",
+          "description": "Whether the server is enabled"
         }
-      }
-    },
-    "Menu": {
-      "description": "A top-level menu in the menu bar",
-      "type": "object",
+      },
       "required": [
-        "items",
-        "label"
+        "command",
+        "args"
       ],
+      "description": "Configuration for a language server"
+    },
+    "ProcessLimits": {
+      "type": "object",
       "properties": {
-        "items": {
-          "type": "array",
-          "items": {
-            "$ref": "#/definitions/MenuItem"
+        "max_memory_mb": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Maximum memory usage in megabytes (None = no limit)"
+        },
+        "enabled": {
+          "type": "boolean",
+          "description": "Enable resource limiting (can be disabled per-platform)"
+        },
+        "max_cpu_percent": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Maximum CPU usage as percentage of total CPU (None = no limit)\nFor multi-core systems, 100% = 1 core, 200% = 2 cores, etc."
+        }
+      },
+      "description": "Configuration for process resource limits"
+    },
+    "Config": {
+      "type": "object",
+      "properties": {
+        "languages": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/LanguageConfig"
           }
         },
-        "label": {
+        "theme": {
           "type": "string"
+        },
+        "editor": {
+          "$ref": "#/$defs/EditorConfig"
+        },
+        "lsp": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/LspServerConfig"
+          }
+        },
+        "keybindings": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Keybinding"
+          },
+          "description": "Custom keybindings (overrides for the active map)"
+        },
+        "menu": {
+          "$ref": "#/$defs/MenuConfig"
+        },
+        "file_explorer": {
+          "$ref": "#/$defs/FileExplorerConfig"
+        },
+        "keybinding_maps": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/KeymapConfig"
+          },
+          "description": "Named keybinding maps (user can define custom maps here)\nEach map can optionally inherit from another map"
+        },
+        "active_keybinding_map": {
+          "type": "string",
+          "description": "Active keybinding map name (e.g., \"default\", \"emacs\", \"vscode\", or a custom name)"
         }
-      }
+      },
+      "description": "Main configuration structure"
     },
     "MenuConfig": {
-      "description": "Menu bar configuration",
       "type": "object",
       "properties": {
         "menus": {
-          "default": [],
           "type": "array",
           "items": {
-            "$ref": "#/definitions/Menu"
+            "$ref": "#/$defs/Menu"
           }
         }
-      }
+      },
+      "description": "Menu bar configuration"
     },
-    "MenuItem": {
-      "description": "A menu item (action, separator, or submenu)",
-      "anyOf": [
-        {
-          "description": "A separator line",
-          "type": "object",
-          "required": [
-            "separator"
-          ],
-          "properties": {
-            "separator": {
-              "type": "boolean"
-            }
-          }
-        },
-        {
-          "description": "An action item",
-          "type": "object",
-          "required": [
-            "action",
-            "label"
-          ],
-          "properties": {
-            "action": {
-              "type": "string"
-            },
-            "args": {
-              "default": {},
-              "type": "object",
-              "additionalProperties": true
-            },
-            "checkbox": {
-              "description": "Checkbox state condition (e.g., \"line_numbers\", \"line_wrap\")",
-              "default": null,
-              "type": [
-                "string",
-                "null"
-              ]
-            },
-            "label": {
-              "type": "string"
-            },
-            "when": {
-              "default": null,
-              "type": [
-                "string",
-                "null"
-              ]
-            }
-          }
-        },
-        {
-          "description": "A submenu (for future extensibility)",
-          "type": "object",
-          "required": [
-            "items",
-            "label"
-          ],
-          "properties": {
-            "items": {
-              "type": "array",
-              "items": {
-                "$ref": "#/definitions/MenuItem"
-              }
-            },
-            "label": {
-              "type": "string"
-            }
-          }
-        }
-      ]
-    },
-    "ProcessLimits": {
-      "description": "Configuration for process resource limits",
+    "Menu": {
       "type": "object",
       "properties": {
-        "enabled": {
-          "description": "Enable resource limiting (can be disabled per-platform)",
-          "default": true,
-          "type": "boolean"
+        "label": {
+          "type": "string"
         },
-        "max_cpu_percent": {
-          "description": "Maximum CPU usage as percentage of total CPU (None = no limit) For multi-core systems, 100% = 1 core, 200% = 2 cores, etc.",
-          "default": null,
-          "type": [
-            "integer",
-            "null"
-          ],
-          "format": "uint32",
-          "minimum": 0.0
-        },
-        "max_memory_mb": {
-          "description": "Maximum memory usage in megabytes (None = no limit)",
-          "default": null,
-          "type": [
-            "integer",
-            "null"
-          ],
-          "format": "uint64",
-          "minimum": 0.0
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/MenuItem"
+          }
         }
-      }
+      },
+      "required": [
+        "label",
+        "items"
+      ],
+      "description": "A top-level menu in the menu bar"
+    },
+    "HighlighterPreference": {
+      "type": "string",
+      "enum": [
+        "auto",
+        "tree-sitter",
+        "textmate"
+      ],
+      "default": "auto",
+      "description": "Preference for which syntax highlighting backend to use"
+    },
+    "KeymapConfig": {
+      "type": "object",
+      "properties": {
+        "bindings": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Keybinding"
+          },
+          "description": "Keybindings defined in this keymap"
+        },
+        "inherits": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Optional parent keymap to inherit from"
+        }
+      },
+      "description": "Keymap configuration (for built-in and user-defined keymaps)"
     }
   }
 }
