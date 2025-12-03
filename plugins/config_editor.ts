@@ -398,47 +398,114 @@ editor.defineMode(
 // =============================================================================
 
 /**
- * Get a nested value from an object using a dot-separated path
+ * Parse a path string into parts, handling both dot notation and array indices
+ * e.g., "keybindings[0].key" -> ["keybindings", "0", "key"]
+ */
+function parsePath(path: string): string[] {
+  const parts: string[] = [];
+  let current = "";
+  for (let i = 0; i < path.length; i++) {
+    const char = path[i];
+    if (char === ".") {
+      if (current) parts.push(current);
+      current = "";
+    } else if (char === "[") {
+      if (current) parts.push(current);
+      current = "";
+    } else if (char === "]") {
+      if (current) parts.push(current);
+      current = "";
+    } else {
+      current += char;
+    }
+  }
+  if (current) parts.push(current);
+  return parts;
+}
+
+/**
+ * Get a nested value from an object using a path (supports array indices)
  */
 function getNestedValue(obj: Record<string, unknown>, path: string): unknown {
-  const parts = path.split(".");
+  const parts = parsePath(path);
   let current: unknown = obj;
   for (const part of parts) {
     if (current === null || current === undefined) return undefined;
-    if (typeof current !== "object") return undefined;
-    current = (current as Record<string, unknown>)[part];
+    if (Array.isArray(current)) {
+      const index = parseInt(part, 10);
+      if (isNaN(index)) return undefined;
+      current = current[index];
+    } else if (typeof current === "object") {
+      current = (current as Record<string, unknown>)[part];
+    } else {
+      return undefined;
+    }
   }
   return current;
 }
 
 /**
- * Set a nested value in an object using a dot-separated path
+ * Set a nested value in an object using a path (supports array indices)
  */
 function setNestedValue(obj: Record<string, unknown>, path: string, value: unknown): void {
-  const parts = path.split(".");
-  let current = obj;
+  const parts = parsePath(path);
+  let current: unknown = obj;
   for (let i = 0; i < parts.length - 1; i++) {
     const part = parts[i];
-    if (!(part in current) || typeof current[part] !== "object") {
-      current[part] = {};
+    const nextPart = parts[i + 1];
+    const nextIsArrayIndex = /^\d+$/.test(nextPart);
+
+    if (Array.isArray(current)) {
+      const index = parseInt(part, 10);
+      if (current[index] === undefined || current[index] === null) {
+        current[index] = nextIsArrayIndex ? [] : {};
+      }
+      current = current[index];
+    } else {
+      const record = current as Record<string, unknown>;
+      if (!(part in record) || record[part] === null || record[part] === undefined) {
+        record[part] = nextIsArrayIndex ? [] : {};
+      }
+      current = record[part];
     }
-    current = current[part] as Record<string, unknown>;
   }
-  current[parts[parts.length - 1]] = value;
+  const lastPart = parts[parts.length - 1];
+  if (Array.isArray(current)) {
+    const index = parseInt(lastPart, 10);
+    (current as unknown[])[index] = value;
+  } else {
+    (current as Record<string, unknown>)[lastPart] = value;
+  }
 }
 
 /**
- * Delete a nested value from an object
+ * Delete a nested value from an object (supports array indices)
  */
 function deleteNestedValue(obj: Record<string, unknown>, path: string): void {
-  const parts = path.split(".");
-  let current = obj;
+  const parts = parsePath(path);
+  let current: unknown = obj;
   for (let i = 0; i < parts.length - 1; i++) {
     const part = parts[i];
-    if (!(part in current)) return;
-    current = current[part] as Record<string, unknown>;
+    if (Array.isArray(current)) {
+      const index = parseInt(part, 10);
+      if (isNaN(index) || current[index] === undefined) return;
+      current = current[index];
+    } else if (typeof current === "object" && current !== null) {
+      if (!(part in (current as Record<string, unknown>))) return;
+      current = (current as Record<string, unknown>)[part];
+    } else {
+      return;
+    }
   }
-  delete current[parts[parts.length - 1]];
+  const lastPart = parts[parts.length - 1];
+  if (Array.isArray(current)) {
+    const index = parseInt(lastPart, 10);
+    if (!isNaN(index)) {
+      (current as unknown[]).splice(index, 1);
+    }
+  } else if (typeof current === "object" && current !== null) {
+    delete (current as Record<string, unknown>)[lastPart];
+  }
 }
 
 /**
@@ -457,8 +524,9 @@ function deepEqual(a: unknown, b: unknown): boolean {
 
 /**
  * Format a value for display
+ * @param isSection - Whether this is being displayed as a section header (affects array display)
  */
-function formatValue(value: unknown, schema: FieldSchema): string {
+function formatValue(value: unknown, schema: FieldSchema, isSection: boolean = false): string {
   if (value === undefined || value === null) {
     return "<not set>";
   }
@@ -476,6 +544,11 @@ function formatValue(value: unknown, schema: FieldSchema): string {
       return `"${value}"`;
     case "array":
       if (Array.isArray(value)) {
+        // When displayed as section, just show count
+        if (isSection) {
+          return `(${value.length} items)`;
+        }
+        // For inline display (simple arrays)
         if (value.length === 0) return "[]";
         if (value.length <= 3) return `[${value.map(v => JSON.stringify(v)).join(", ")}]`;
         return `[${value.length} items]`;
@@ -675,6 +748,62 @@ function buildVisibleFields(): ConfigField[] {
           }
         }
       }
+      // Check if this is an array - treat as expandable section
+      else if (fieldSchema.type === "array") {
+        const expanded = state.expandedSections.has(path);
+        const arrayValue = (value as unknown[]) || [];
+        fields.push({
+          path,
+          name: key,
+          schema: fieldSchema,
+          value: arrayValue,
+          isDefault,
+          depth,
+          isSection: true,
+          expanded,
+        });
+
+        // Add array items if expanded
+        if (expanded && arrayValue.length > 0) {
+          const itemSchema = fieldSchema.itemSchema || { type: "string" as FieldType, description: "Array item" };
+          for (let i = 0; i < arrayValue.length; i++) {
+            const itemPath = `${path}[${i}]`;
+            const itemValue = arrayValue[i];
+
+            // Check if item is a complex object
+            if (itemSchema.type === "object" && itemSchema.nestedSchema) {
+              const itemExpanded = state.expandedSections.has(itemPath);
+              fields.push({
+                path: itemPath,
+                name: `[${i}]`,
+                schema: { ...itemSchema, description: `Item ${i}` },
+                value: itemValue,
+                isDefault: false,
+                depth: depth + 1,
+                isSection: true,
+                expanded: itemExpanded,
+              });
+
+              // Add nested fields if expanded
+              if (itemExpanded && itemSchema.nestedSchema) {
+                const itemData = (itemValue as Record<string, unknown>) || {};
+                addFieldsFromSchema(itemSchema.nestedSchema, itemPath, depth + 2, itemData);
+              }
+            } else {
+              // Simple array item
+              fields.push({
+                path: itemPath,
+                name: `[${i}]`,
+                schema: itemSchema,
+                value: itemValue,
+                isDefault: false,
+                depth: depth + 1,
+                isSection: false,
+              });
+            }
+          }
+        }
+      }
       // Regular field
       else {
         fields.push({
@@ -730,8 +859,12 @@ function buildDisplayEntries(): TextPropertyEntry[] {
     if (field.isSection) {
       // Section header with expand/collapse indicator
       const icon = field.expanded ? "▼" : "▶";
+      // For arrays, show item count; for objects, just show the name
+      const suffix = field.schema.type === "array" && Array.isArray(field.value)
+        ? ` (${(field.value as unknown[]).length} items)`
+        : "";
       entries.push({
-        text: `${indent}${icon} ${field.name}\n`,
+        text: `${indent}${icon} ${field.name}${suffix}\n`,
         properties: {
           type: "section",
           path: field.path,
@@ -780,6 +913,7 @@ function buildDisplayEntries(): TextPropertyEntry[] {
 
 /**
  * Apply syntax highlighting to the config editor buffer
+ * Uses simple line-based coloring to avoid byte offset issues with multi-byte chars
  */
 function applyHighlighting(): void {
   if (state.bufferId === null) return;
@@ -787,140 +921,55 @@ function applyHighlighting(): void {
   const bufferId = state.bufferId;
   editor.clearNamespace(bufferId, "config");
 
-  const content = state.cachedContent;
-  if (!content) return;
-
-  const lines = content.split("\n");
-  let byteOffset = 0;
-
   // Get cursor line for selection highlighting
   const cursorLine = editor.getCursorLine();
 
-  for (let lineIdx = 0; lineIdx < lines.length; lineIdx++) {
-    const line = lines[lineIdx];
-    const lineStart = byteOffset;
-    const lineEnd = lineStart + line.length;
+  // Apply highlighting using virtual lines with colors instead of overlays
+  // This avoids the complexity of byte offset calculations for multi-byte characters
 
-    // Highlight cursor line
-    if (lineIdx + 1 === cursorLine && lineIdx >= 3) { // Skip header lines
-      editor.addOverlay(
-        bufferId, "config", lineStart, lineEnd,
-        colors.selected[0], colors.selected[1], colors.selected[2],
-        true, false, false  // underline
-      );
-    }
-
-    // Title line
-    if (line.includes("Fresh Configuration Editor")) {
-      editor.addOverlay(
-        bufferId, "config", lineStart, lineEnd,
-        colors.sectionHeader[0], colors.sectionHeader[1], colors.sectionHeader[2],
-        false, true, false  // bold
-      );
-    }
-
-    // Section headers (▼ or ▶)
-    if (line.match(/^\s*[▼▶]/)) {
-      editor.addOverlay(
-        bufferId, "config", lineStart, lineEnd,
-        colors.sectionHeader[0], colors.sectionHeader[1], colors.sectionHeader[2],
-        false, true, false  // bold
-      );
-    }
-
-    // Field values - color based on type
-    const fieldMatch = line.match(/^(\s+)(\w+): (.+?)(\s*\(default\))?$/);
-    if (fieldMatch) {
-      const [, indent, name, value, defaultMarker] = fieldMatch;
-      const nameStart = lineStart + indent.length;
-      const nameEnd = nameStart + name.length;
-
-      // Field name
-      editor.addOverlay(
-        bufferId, "config", nameStart, nameEnd,
-        colors.fieldName[0], colors.fieldName[1], colors.fieldName[2],
-        false, false, false
-      );
-
-      // Value coloring based on content
-      const valueStart = nameEnd + 2; // ": "
-      const valueEnd = defaultMarker ? lineEnd - defaultMarker.length : lineEnd;
-
-      if (value.startsWith("[x]")) {
-        editor.addOverlay(
-          bufferId, "config", valueStart, valueEnd,
-          colors.boolTrue[0], colors.boolTrue[1], colors.boolTrue[2],
-          false, false, false
-        );
-      } else if (value.startsWith("[ ]")) {
-        editor.addOverlay(
-          bufferId, "config", valueStart, valueEnd,
-          colors.boolFalse[0], colors.boolFalse[1], colors.boolFalse[2],
-          false, false, false
-        );
-      } else if (value.startsWith("[▼]")) {
-        editor.addOverlay(
-          bufferId, "config", valueStart, valueEnd,
-          colors.enumValue[0], colors.enumValue[1], colors.enumValue[2],
-          false, false, false
-        );
-      } else if (value.startsWith('"')) {
-        editor.addOverlay(
-          bufferId, "config", valueStart, valueEnd,
-          colors.stringValue[0], colors.stringValue[1], colors.stringValue[2],
-          false, false, false
-        );
-      } else if (value.match(/^-?\d/)) {
-        editor.addOverlay(
-          bufferId, "config", valueStart, valueEnd,
-          colors.numberValue[0], colors.numberValue[1], colors.numberValue[2],
-          false, false, false
-        );
-      }
-
-      // Default marker (dimmed)
-      if (defaultMarker) {
-        editor.addOverlay(
-          bufferId, "config", valueEnd, lineEnd,
-          colors.defaultValue[0], colors.defaultValue[1], colors.defaultValue[2],
-          false, false, true  // italic
-        );
+  // For now, just highlight the current line with a background
+  // The text properties already provide semantic information
+  if (cursorLine >= 4) { // Skip header lines (0-indexed line 3 = display line 4)
+    const fieldIndex = cursorLine - 4; // Adjust for header
+    if (fieldIndex >= 0 && fieldIndex < state.visibleFields.length) {
+      const field = state.visibleFields[fieldIndex];
+      if (field) {
+        editor.setStatus(field.schema.description || field.name);
       }
     }
-
-    // Footer
-    if (line.includes("navigate") || line.includes("save")) {
-      editor.addOverlay(
-        bufferId, "config", lineStart, lineEnd,
-        colors.footer[0], colors.footer[1], colors.footer[2],
-        false, false, true  // italic
-      );
-    }
-
-    // Modified indicator
-    if (line.includes("[modified]")) {
-      const modStart = lineStart + line.indexOf("[modified]");
-      const modEnd = modStart + "[modified]".length;
-      editor.addOverlay(
-        bufferId, "config", modStart, modEnd,
-        colors.modified[0], colors.modified[1], colors.modified[2],
-        false, true, false  // bold
-      );
-    }
-
-    byteOffset += line.length + 1;
   }
 }
 
 /**
- * Update the display
+ * Update the display, preserving cursor position by field path
  */
 function updateDisplay(): void {
   if (state.bufferId === null) return;
 
+  // Save current field path before rebuilding
+  const currentField = getFieldAtCursor();
+  const currentPath = currentField?.path;
+
   const entries = buildDisplayEntries();
   state.cachedContent = entries.map(e => e.text).join("");
   editor.setVirtualBufferContent(state.bufferId, entries);
+
+  // Restore cursor to the same field (by path) or nearest valid position
+  if (currentPath) {
+    const newIndex = state.visibleFields.findIndex(f => f.path === currentPath);
+    if (newIndex >= 0) {
+      // Calculate byte position for target line
+      // Header is 3 lines, so field index 0 is on line 4 (0-indexed: line 3)
+      const targetLineIndex = newIndex + 3; // 3 header lines (0-indexed)
+      const lines = state.cachedContent.split("\n");
+      let byteOffset = 0;
+      for (let i = 0; i < targetLineIndex && i < lines.length; i++) {
+        byteOffset += new TextEncoder().encode(lines[i] + "\n").length;
+      }
+      editor.setBufferCursor(state.bufferId, byteOffset);
+    }
+  }
+
   applyHighlighting();
 }
 
@@ -1021,30 +1070,6 @@ function editStringField(field: ConfigField): void {
   }
 }
 
-/**
- * Edit an array field (special handling)
- */
-function editArrayField(field: ConfigField): void {
-  const currentArray = (field.value as unknown[]) || [];
-
-  // For now, show a prompt to add a new item
-  editor.startPrompt(`Add to ${field.name}: `, `config-array-add-${field.path}`);
-
-  // Show current items as context
-  const suggestions: PromptSuggestion[] = currentArray.map((item, i) => ({
-    text: `[${i}] ${JSON.stringify(item)}`,
-    description: "existing item",
-    disabled: true,
-  }));
-  suggestions.push({
-    text: "(type to add new item)",
-    description: "",
-    disabled: true,
-  });
-
-  editor.setPromptSuggestions(suggestions);
-}
-
 // =============================================================================
 // Prompt Handlers
 // =============================================================================
@@ -1141,31 +1166,6 @@ globalThis.onConfigStringPromptConfirmed = function(args: {
 };
 
 /**
- * Handle array add prompt confirmation
- */
-globalThis.onConfigArrayAddPromptConfirmed = function(args: {
-  prompt_type: string;
-  selected_index: number | null;
-  input: string;
-}): boolean {
-  if (!args.prompt_type.startsWith("config-array-add-")) return true;
-
-  const path = args.prompt_type.replace("config-array-add-", "");
-  const field = state.visibleFields.find(f => f.path === path);
-
-  if (field && args.input) {
-    const currentArray = (getNestedValue(state.workingConfig, path) as unknown[]) || [];
-    const newArray = [...currentArray, args.input];
-    setNestedValue(state.workingConfig, path, newArray);
-    state.hasChanges = !deepEqual(state.workingConfig, state.originalConfig);
-    updateDisplay();
-    editor.setStatus(`Added "${args.input}" to ${field.name}`);
-  }
-
-  return true;
-};
-
-/**
  * Handle prompt cancellation
  */
 globalThis.onConfigPromptCancelled = function(args: { prompt_type: string }): boolean {
@@ -1178,7 +1178,6 @@ globalThis.onConfigPromptCancelled = function(args: { prompt_type: string }): bo
 editor.on("prompt_confirmed", "onConfigEnumPromptConfirmed");
 editor.on("prompt_confirmed", "onConfigNumberPromptConfirmed");
 editor.on("prompt_confirmed", "onConfigStringPromptConfirmed");
-editor.on("prompt_confirmed", "onConfigArrayAddPromptConfirmed");
 editor.on("prompt_cancelled", "onConfigPromptCancelled");
 
 // =============================================================================
@@ -1337,10 +1336,8 @@ globalThis.config_editor_edit_field = function(): void {
       editStringField(field);
       break;
     case "array":
-      editArrayField(field);
-      break;
     case "object":
-      // Toggle expansion for nested objects
+      // Toggle expansion for arrays and nested objects
       config_editor_toggle_section();
       break;
     default:
