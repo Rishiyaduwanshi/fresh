@@ -3685,6 +3685,17 @@ impl Editor {
                 if let Some(state) = &mut self.file_open_state {
                     state.set_entries(entries);
                 }
+                // Re-apply filter from prompt (entries were just loaded, filter needs to select matching entry)
+                let filter = self
+                    .prompt
+                    .as_ref()
+                    .map(|p| p.input.clone())
+                    .unwrap_or_default();
+                if !filter.is_empty() {
+                    if let Some(state) = &mut self.file_open_state {
+                        state.apply_filter(&filter);
+                    }
+                }
             }
             Err(e) => {
                 if let Some(state) = &mut self.file_open_state {

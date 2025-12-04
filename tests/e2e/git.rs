@@ -629,10 +629,11 @@ fn test_git_commands_via_command_palette() {
     harness
         .send_key(KeyCode::Enter, KeyModifiers::NONE)
         .unwrap();
-    harness.render().unwrap();
 
-    // Should now be in git grep mode
-    harness.assert_screen_contains("Git grep:");
+    // Wait for git grep mode to appear (async plugin loading)
+    harness
+        .wait_until(|h| h.screen_to_string().contains("Git grep:"))
+        .unwrap();
 }
 
 /// REPRODUCTION TEST: Git grep selection should open file and jump to exact line

@@ -128,23 +128,34 @@ impl Editor {
 
     /// Confirm selection in file open dialog
     fn file_open_confirm(&mut self) {
-        // First, check if the prompt input is an absolute path
         let prompt_input = self
             .prompt
             .as_ref()
             .map(|p| p.input.clone())
             .unwrap_or_default();
 
-        // If the input looks like an absolute path, try to open/navigate to it directly
-        if prompt_input.starts_with('/') || prompt_input.starts_with('~') {
+        // Get the current directory from file open state
+        let current_dir = self
+            .file_open_state
+            .as_ref()
+            .map(|s| s.current_dir.clone())
+            .unwrap_or_else(|| std::env::current_dir().unwrap_or_default());
+
+        // If there's any prompt input, try to resolve it as a path
+        if !prompt_input.is_empty() {
             let expanded_path = if prompt_input.starts_with('~') {
+                // Path starting with ~
                 if let Some(home) = dirs::home_dir() {
                     home.join(&prompt_input[1..].trim_start_matches('/'))
                 } else {
                     std::path::PathBuf::from(&prompt_input)
                 }
-            } else {
+            } else if prompt_input.starts_with('/') {
+                // Absolute path
                 std::path::PathBuf::from(&prompt_input)
+            } else {
+                // Relative path (including plain filename) - resolve against current directory
+                current_dir.join(&prompt_input)
             };
 
             if expanded_path.is_dir() {
@@ -157,7 +168,7 @@ impl Editor {
             }
         }
 
-        // Otherwise, use the selected entry from the file list
+        // No prompt input or path resolution failed - use the selected entry from the file list
         let (path, is_dir) = {
             let state = match &self.file_open_state {
                 Some(s) => s,
@@ -232,49 +243,55 @@ impl Editor {
             .map(|p| p.input.clone())
             .unwrap_or_default();
 
-        // Check if user typed a directory name ending with "/"
-        // If so, navigate into that directory
-        if filter.ends_with('/') {
-            let dir_name = &filter[..filter.len() - 1];
-            if !dir_name.is_empty() {
-                // Find a matching directory entry
-                let matching_dir = self.file_open_state.as_ref().and_then(|state| {
-                    state.entries.iter().find(|e| {
-                        e.fs_entry.is_dir()
-                            && e.fs_entry.name.to_lowercase() == dir_name.to_lowercase()
-                    })
-                });
+        // Check if user typed/pasted a path containing directory separators
+        // Navigate to the parent directory of the path (so the file appears in the list)
+        if filter.contains('/') {
+            let current_dir = self
+                .file_open_state
+                .as_ref()
+                .map(|s| s.current_dir.clone())
+                .unwrap_or_else(|| std::env::current_dir().unwrap_or_default());
 
-                if let Some(entry) = matching_dir {
-                    let path = entry.fs_entry.path.clone();
-                    self.file_open_navigate_to(path);
-                    return;
+            // Build the full path
+            let full_path = if filter.starts_with('/') {
+                std::path::PathBuf::from(&filter)
+            } else if filter.starts_with('~') {
+                if let Some(home) = dirs::home_dir() {
+                    home.join(&filter[1..].trim_start_matches('/'))
+                } else {
+                    current_dir.join(&filter)
                 }
+            } else {
+                current_dir.join(&filter)
+            };
 
-                // If no exact match, try fuzzy match - navigate to best matching directory
-                let best_match_dir = self.file_open_state.as_ref().and_then(|state| {
-                    use crate::input::fuzzy::fuzzy_match;
-                    state
-                        .entries
-                        .iter()
-                        .filter(|e| e.fs_entry.is_dir() && e.fs_entry.name != "..")
-                        .filter_map(|e| {
-                            let result = fuzzy_match(dir_name, &e.fs_entry.name);
-                            if result.matched {
-                                Some((e, result.score))
-                            } else {
-                                None
-                            }
-                        })
-                        .max_by_key(|(_, score)| *score)
-                        .map(|(e, _)| e)
-                });
+            // Get the parent directory and filename
+            let (target_dir, filename) = if filter.ends_with('/') {
+                // Path ends with /, treat the whole thing as a directory
+                (full_path.clone(), String::new())
+            } else {
+                // Get parent directory so the file will be in the listing
+                let parent = full_path.parent().map(|p| p.to_path_buf()).unwrap_or(full_path.clone());
+                let name = full_path.file_name()
+                    .map(|n| n.to_string_lossy().to_string())
+                    .unwrap_or_default();
+                (parent, name)
+            };
 
-                if let Some(entry) = best_match_dir {
-                    let path = entry.fs_entry.path.clone();
-                    self.file_open_navigate_to(path);
-                    return;
+            // Navigate to target directory if it exists and is different from current
+            if target_dir.is_dir() && target_dir != current_dir {
+                // Update prompt to only show the filename (directory is shown separately)
+                if let Some(prompt) = &mut self.prompt {
+                    prompt.input = filename.clone();
+                    prompt.cursor_pos = prompt.input.len();
                 }
+                self.load_file_open_directory(target_dir);
+
+                // Apply filter with the filename only
+                if let Some(state) = &mut self.file_open_state {
+                    state.apply_filter(&filename);
+                }
+                return;
             }
         }
 
