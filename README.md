@@ -47,7 +47,23 @@ npm install -g @fresh-editor/fresh-editor
 npx @fresh-editor/fresh-editor
 ```
 
-### Pre-built binaries
+### Debian/Ubuntu (.deb)
+
+Download the `.deb` file from the [releases page](https://github.com/sinelaw/fresh/releases) and install:
+
+```bash
+sudo dpkg -i fresh-editor_*.deb
+```
+
+### Fedora/RHEL/openSUSE (.rpm)
+
+Download the `.rpm` file from the [releases page](https://github.com/sinelaw/fresh/releases) and install:
+
+```bash
+sudo rpm -i fresh-editor-*.rpm
+```
+
+### Other pre-built binaries
 
 Download the latest release for your platform from the [releases page](https://github.com/sinelaw/fresh/releases).
 
