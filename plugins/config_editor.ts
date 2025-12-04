@@ -985,13 +985,14 @@ function buildDisplayEntries(): TextPropertyEntry[] {
     // Add description before the field if it has one (and it's not just the field name)
     const desc = field.schema.description;
     if (desc && desc !== field.name && !desc.startsWith("Item ")) {
-      // Show description as single line (collapse newlines to spaces)
-      const descText = desc.replace(/\n/g, " ").replace(/\s+/g, " ").trim();
       const descIndent = indent + "  ";
-      entries.push({
-        text: `${descIndent}${descText}\n`,
-        properties: { type: "description", path: field.path },
-      });
+      // Split on newlines and indent each line
+      for (const line of desc.split("\n")) {
+        entries.push({
+          text: `${descIndent}${line}\n`,
+          properties: { type: "description", path: field.path },
+        });
+      }
     }
 
     if (field.isSection) {
