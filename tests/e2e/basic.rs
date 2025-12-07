@@ -169,10 +169,7 @@ fn test_open_file_viewport_dimensions() {
     // Render and verify the viewport displays the correct number of lines
     harness.render().unwrap();
 
-    let visible_count = harness
-        .editor()
-        .active_viewport()
-        .visible_line_count();
+    let visible_count = harness.editor().active_viewport().visible_line_count();
 
     assert_eq!(
         visible_count, expected_viewport_height,

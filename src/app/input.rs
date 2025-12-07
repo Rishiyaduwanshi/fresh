@@ -1117,7 +1117,9 @@ impl Editor {
                     if let Some(view_state) = self.split_view_states.get_mut(&active_split) {
                         let state = self.buffers.get_mut(&self.active_buffer).unwrap();
                         let primary = *state.cursors.primary();
-                        view_state.viewport.ensure_visible(&mut state.buffer, &primary);
+                        view_state
+                            .viewport
+                            .ensure_visible(&mut state.buffer, &primary);
                     }
                 }
             }
@@ -2833,10 +2835,21 @@ impl Editor {
                     // Check if we started dragging from the thumb (have drag_start_row)
                     if self.mouse_state.drag_start_row.is_some() {
                         // Relative drag from thumb
-                        self.handle_scrollbar_drag_relative(row, *split_id, *buffer_id, *scrollbar_rect)?;
+                        self.handle_scrollbar_drag_relative(
+                            row,
+                            *split_id,
+                            *buffer_id,
+                            *scrollbar_rect,
+                        )?;
                     } else {
                         // Jump drag (started from track)
-                        self.handle_scrollbar_jump(col, row, *split_id, *buffer_id, *scrollbar_rect)?;
+                        self.handle_scrollbar_jump(
+                            col,
+                            row,
+                            *split_id,
+                            *buffer_id,
+                            *scrollbar_rect,
+                        )?;
                     }
                     return Ok(());
                 }
@@ -3114,7 +3127,9 @@ impl Editor {
             view_state.viewport.set_skip_ensure_visible();
             tracing::trace!(
                 "handle_mouse_scroll: delta={}, top_byte {} -> {}",
-                delta, top_byte_before, view_state.viewport.top_byte
+                delta,
+                top_byte_before,
+                view_state.viewport.top_byte
             );
         }
 
@@ -3364,11 +3379,15 @@ impl Editor {
     /// This is called after scrollbar operations to ensure the cursor is in view
     pub(super) fn move_cursor_to_visible_area(&mut self, split_id: SplitId, buffer_id: BufferId) {
         // Get viewport info from SplitViewState
-        let (top_byte, viewport_height) = if let Some(view_state) = self.split_view_states.get(&split_id) {
-            (view_state.viewport.top_byte, view_state.viewport.height as usize)
-        } else {
-            return;
-        };
+        let (top_byte, viewport_height) =
+            if let Some(view_state) = self.split_view_states.get(&split_id) {
+                (
+                    view_state.viewport.top_byte,
+                    view_state.viewport.height as usize,
+                )
+            } else {
+                return;
+            };
 
         if let Some(state) = self.buffers.get_mut(&buffer_id) {
             let buffer_len = state.buffer.len();

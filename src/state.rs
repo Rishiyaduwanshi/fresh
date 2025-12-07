@@ -568,7 +568,6 @@ impl EditorState {
     pub fn primary_cursor_mut(&mut self) -> &mut Cursor {
         self.cursors.primary_mut()
     }
-
 }
 
 /// Convert event overlay face to the actual overlay face

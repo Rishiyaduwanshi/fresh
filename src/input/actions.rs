@@ -1866,7 +1866,8 @@ mod tests {
         assert_eq!(state.cursors.primary().position, 6);
 
         // Press Backspace - should delete the newline at position 5
-        let events = action_to_events(&mut state, Action::DeleteBackward, 4, false, 80, 24).unwrap();
+        let events =
+            action_to_events(&mut state, Action::DeleteBackward, 4, false, 80, 24).unwrap();
         println!("Generated events: {:?}", events);
 
         for event in events {
@@ -2613,7 +2614,8 @@ mod tests {
         );
 
         // Delete backward (should delete the newline)
-        let events = action_to_events(&mut state, Action::DeleteBackward, 4, false, 80, 24).unwrap();
+        let events =
+            action_to_events(&mut state, Action::DeleteBackward, 4, false, 80, 24).unwrap();
         for event in events.iter() {
             println!("Event: {:?}", event);
             state.apply(event);
@@ -2648,7 +2650,8 @@ mod tests {
         assert_eq!(state.cursors.primary().position, 0);
 
         // Insert opening parenthesis with auto_indent=true
-        let events = action_to_events(&mut state, Action::InsertChar('('), 4, true, 80, 24).unwrap();
+        let events =
+            action_to_events(&mut state, Action::InsertChar('('), 4, true, 80, 24).unwrap();
         println!("Events: {:?}", events);
 
         // Should have Insert event for "()" and MoveCursor to position between them
@@ -2673,7 +2676,8 @@ mod tests {
             EditorState::new(80, 24, crate::config::LARGE_FILE_THRESHOLD_BYTES as usize);
 
         // Insert opening curly brace with auto_indent=true
-        let events = action_to_events(&mut state, Action::InsertChar('{'), 4, true, 80, 24).unwrap();
+        let events =
+            action_to_events(&mut state, Action::InsertChar('{'), 4, true, 80, 24).unwrap();
 
         for event in events {
             state.apply(&event);
@@ -2693,7 +2697,8 @@ mod tests {
             EditorState::new(80, 24, crate::config::LARGE_FILE_THRESHOLD_BYTES as usize);
 
         // Insert opening square bracket
-        let events = action_to_events(&mut state, Action::InsertChar('['), 4, true, 80, 24).unwrap();
+        let events =
+            action_to_events(&mut state, Action::InsertChar('['), 4, true, 80, 24).unwrap();
 
         for event in events {
             state.apply(&event);
@@ -2709,7 +2714,8 @@ mod tests {
             EditorState::new(80, 24, crate::config::LARGE_FILE_THRESHOLD_BYTES as usize);
 
         // Insert double quote
-        let events = action_to_events(&mut state, Action::InsertChar('"'), 4, true, 80, 24).unwrap();
+        let events =
+            action_to_events(&mut state, Action::InsertChar('"'), 4, true, 80, 24).unwrap();
 
         for event in events {
             state.apply(&event);
@@ -2725,7 +2731,8 @@ mod tests {
             EditorState::new(80, 24, crate::config::LARGE_FILE_THRESHOLD_BYTES as usize);
 
         // Insert opening parenthesis with auto_indent=false
-        let events = action_to_events(&mut state, Action::InsertChar('('), 4, false, 80, 24).unwrap();
+        let events =
+            action_to_events(&mut state, Action::InsertChar('('), 4, false, 80, 24).unwrap();
 
         for event in events {
             state.apply(&event);
@@ -2760,7 +2767,8 @@ mod tests {
         });
 
         // Insert opening parenthesis before 'abc'
-        let events = action_to_events(&mut state, Action::InsertChar('('), 4, true, 80, 24).unwrap();
+        let events =
+            action_to_events(&mut state, Action::InsertChar('('), 4, true, 80, 24).unwrap();
 
         for event in events {
             state.apply(&event);
@@ -2812,7 +2820,8 @@ mod tests {
         });
 
         // Insert opening parenthesis at both cursors
-        let events = action_to_events(&mut state, Action::InsertChar('('), 4, true, 80, 24).unwrap();
+        let events =
+            action_to_events(&mut state, Action::InsertChar('('), 4, true, 80, 24).unwrap();
 
         for event in events {
             state.apply(&event);
@@ -2949,7 +2958,8 @@ mod tests {
         });
 
         // Delete backward with auto_indent=false - should only delete opening bracket
-        let events = action_to_events(&mut state, Action::DeleteBackward, 4, false, 80, 24).unwrap();
+        let events =
+            action_to_events(&mut state, Action::DeleteBackward, 4, false, 80, 24).unwrap();
 
         for event in events {
             state.apply(&event);

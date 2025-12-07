@@ -506,26 +506,34 @@ impl SplitRenderer {
                 // Get viewport from SplitViewState (authoritative source)
                 // We need to get it mutably for sync operations
                 // Use as_deref() to get Option<&HashMap> for read-only operations
-                let view_state_opt = split_view_states.as_deref().and_then(|vs| vs.get(&split_id));
-                let viewport_clone = view_state_opt
-                    .map(|vs| vs.viewport.clone())
-                    .unwrap_or_else(|| {
-                        crate::view::viewport::Viewport::new(
-                            layout.content_rect.width,
-                            layout.content_rect.height,
-                        )
-                    });
+                let view_state_opt = split_view_states
+                    .as_deref()
+                    .and_then(|vs| vs.get(&split_id));
+                let viewport_clone =
+                    view_state_opt
+                        .map(|vs| vs.viewport.clone())
+                        .unwrap_or_else(|| {
+                            crate::view::viewport::Viewport::new(
+                                layout.content_rect.width,
+                                layout.content_rect.height,
+                            )
+                        });
                 let mut viewport = viewport_clone;
 
-                let saved_cursors =
-                    Self::temporary_split_state(state, split_view_states.as_deref(), split_id, is_active);
+                let saved_cursors = Self::temporary_split_state(
+                    state,
+                    split_view_states.as_deref(),
+                    split_id,
+                    is_active,
+                );
                 Self::sync_viewport_to_content(
                     &mut viewport,
                     &mut state.buffer,
                     &state.cursors,
                     layout.content_rect,
                 );
-                let view_prefs = Self::resolve_view_preferences(state, split_view_states.as_deref(), split_id);
+                let view_prefs =
+                    Self::resolve_view_preferences(state, split_view_states.as_deref(), split_id);
 
                 let split_view_mappings = Self::render_buffer_in_split(
                     frame,
@@ -554,8 +562,12 @@ impl SplitRenderer {
                 // For small files, count actual lines for accurate scrollbar
                 // For large files, we'll use a constant thumb size
                 let buffer_len = state.buffer.len();
-                let (total_lines, top_line) =
-                    Self::scrollbar_line_counts(state, &viewport, large_file_threshold_bytes, buffer_len);
+                let (total_lines, top_line) = Self::scrollbar_line_counts(
+                    state,
+                    &viewport,
+                    large_file_threshold_bytes,
+                    buffer_len,
+                );
 
                 // Render scrollbar for this split and get thumb position
                 let (thumb_start, thumb_end) = Self::render_scrollbar(
@@ -581,7 +593,8 @@ impl SplitRenderer {
                     if let Some(view_state) = view_states.get_mut(&split_id) {
                         tracing::trace!(
                             "Writing back viewport: top_byte={}, skip_ensure_visible={}",
-                            viewport.top_byte, viewport.should_skip_ensure_visible()
+                            viewport.top_byte,
+                            viewport.should_skip_ensure_visible()
                         );
                         view_state.viewport = viewport.clone();
                     }

@@ -1242,10 +1242,7 @@ fn test_line_numbers_absolute_after_jump_to_beginning() {
     // Check viewport scrolled
     {
         let viewport = harness.editor().active_viewport();
-        assert!(
-            viewport.top_byte > 0,
-            "Viewport should have scrolled down"
-        );
+        assert!(viewport.top_byte > 0, "Viewport should have scrolled down");
     }
 
     // Now jump back to beginning

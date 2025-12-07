@@ -390,7 +390,10 @@ fn test_ctrl_up_scrolls_view_up() {
     let cursor_pos_before = harness.cursor_position();
     let (_, screen_y_before) = harness.screen_cursor_position();
     let top_byte_before = harness.editor().active_viewport().top_byte;
-    eprintln!("BEFORE: cursor_pos={}, screen_y={}, top_byte={}", cursor_pos_before, screen_y_before, top_byte_before);
+    eprintln!(
+        "BEFORE: cursor_pos={}, screen_y={}, top_byte={}",
+        cursor_pos_before, screen_y_before, top_byte_before
+    );
 
     // Press Ctrl+Up to scroll view up (content moves down, we see earlier lines)
     harness
@@ -412,7 +415,10 @@ fn test_ctrl_up_scrolls_view_up() {
 
     // Screen cursor Y should move down by 1 (since view scrolled up)
     let (_, screen_y_after) = harness.screen_cursor_position();
-    eprintln!("AFTER: cursor_pos={}, screen_y={}", cursor_pos_after, screen_y_after);
+    eprintln!(
+        "AFTER: cursor_pos={}, screen_y={}",
+        cursor_pos_after, screen_y_after
+    );
     assert_eq!(
         screen_y_after,
         screen_y_before + 1,

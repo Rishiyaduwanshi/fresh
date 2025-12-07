@@ -278,7 +278,10 @@ impl Viewport {
             tracing::trace!("ensure_visible_in_layout: SKIPPING due to skip_ensure_visible flag");
             return false;
         }
-        tracing::trace!("ensure_visible_in_layout: NOT skipping, skip_ensure_visible={}", self.skip_ensure_visible);
+        tracing::trace!(
+            "ensure_visible_in_layout: NOT skipping, skip_ensure_visible={}",
+            self.skip_ensure_visible
+        );
 
         let viewport_height = self.visible_line_count();
         if view_lines.is_empty() || viewport_height == 0 {
@@ -356,7 +359,9 @@ impl Viewport {
                     );
                     self.top_view_line_offset = new_offset;
                     // Also update top_byte to match the new scroll position
-                    if let Some(new_top_byte) = self.get_source_byte_for_view_line(view_lines, new_offset) {
+                    if let Some(new_top_byte) =
+                        self.get_source_byte_for_view_line(view_lines, new_offset)
+                    {
                         self.top_byte = new_top_byte;
                     }
                     return true;
@@ -598,7 +603,10 @@ impl Viewport {
             tracing::trace!("ensure_visible: SKIPPING due to skip_ensure_visible flag");
             return;
         }
-        tracing::trace!("ensure_visible: NOT skipping, skip_ensure_visible={}", self.skip_ensure_visible);
+        tracing::trace!(
+            "ensure_visible: NOT skipping, skip_ensure_visible={}",
+            self.skip_ensure_visible
+        );
 
         // For large files with lazy loading, ensure data around cursor is loaded
         let viewport_lines = self.visible_line_count().max(1);

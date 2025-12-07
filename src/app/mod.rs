@@ -2105,7 +2105,11 @@ impl Editor {
     /// Get the viewport for the active split (mutable)
     pub fn active_viewport_mut(&mut self) -> &mut crate::view::viewport::Viewport {
         let active_split = self.split_manager.active_split();
-        &mut self.split_view_states.get_mut(&active_split).unwrap().viewport
+        &mut self
+            .split_view_states
+            .get_mut(&active_split)
+            .unwrap()
+            .viewport
     }
 
     /// Get the display name for a buffer (filename or virtual buffer name)
