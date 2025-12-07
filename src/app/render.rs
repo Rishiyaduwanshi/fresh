@@ -282,6 +282,7 @@ impl Editor {
                 self.config.editor.large_file_threshold_bytes,
                 self.config.editor.line_wrap,
                 self.config.editor.estimated_line_length,
+                self.config.editor.highlight_context_bytes,
                 Some(&self.split_view_states),
                 hide_cursor,
                 hovered_tab,

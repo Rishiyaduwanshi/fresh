@@ -122,6 +122,13 @@ pub struct EditorConfig {
     /// Set to 0 to disable periodic auto-save (manual recovery only).
     #[serde(default = "default_auto_save_interval")]
     pub auto_save_interval_secs: u32,
+
+    /// Number of bytes to look back/forward from the viewport for syntax highlighting context.
+    /// Larger values improve accuracy for multi-line constructs (strings, comments, nested blocks)
+    /// but may slow down highlighting for very large files.
+    /// Default: 10KB (10000 bytes)
+    #[serde(default = "default_highlight_context_bytes")]
+    pub highlight_context_bytes: usize,
 }
 
 fn default_tab_size() -> usize {
@@ -165,6 +172,10 @@ fn default_auto_save_interval() -> u32 {
     2 // Auto-save every 2 seconds for fast recovery
 }
 
+fn default_highlight_context_bytes() -> usize {
+    10_000 // 10KB context for accurate syntax highlighting
+}
+
 impl Default for EditorConfig {
     fn default() -> Self {
         Self {
@@ -182,6 +193,7 @@ impl Default for EditorConfig {
             enable_inlay_hints: true,
             recovery_enabled: true,
             auto_save_interval_secs: default_auto_save_interval(),
+            highlight_context_bytes: default_highlight_context_bytes(),
         }
     }
 }

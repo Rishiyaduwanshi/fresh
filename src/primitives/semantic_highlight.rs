@@ -311,6 +311,7 @@ impl SemanticHighlighter {
     /// * `cursor_position` - Current cursor byte position
     /// * `viewport_start` - Start byte offset of visible viewport
     /// * `viewport_end` - End byte offset of visible viewport
+    /// * `context_bytes` - Number of bytes before/after viewport to parse for context
     ///
     /// # Returns
     /// Vector of highlight spans for all occurrences of the word under cursor
@@ -320,6 +321,7 @@ impl SemanticHighlighter {
         cursor_position: usize,
         viewport_start: usize,
         viewport_end: usize,
+        context_bytes: usize,
     ) -> Vec<HighlightSpan> {
         if !self.enabled {
             return Vec::new();
@@ -332,6 +334,7 @@ impl SemanticHighlighter {
                 cursor_position,
                 viewport_start,
                 viewport_end,
+                context_bytes,
             );
         }
 
@@ -342,11 +345,18 @@ impl SemanticHighlighter {
                 cursor_position,
                 viewport_start,
                 viewport_end,
+                context_bytes,
             );
         }
 
         // Fallback to text-matching mode
-        self.highlight_with_text_matching(buffer, cursor_position, viewport_start, viewport_end)
+        self.highlight_with_text_matching(
+            buffer,
+            cursor_position,
+            viewport_start,
+            viewport_end,
+            context_bytes,
+        )
     }
 
     /// Locals-based highlighting that respects variable scoping
@@ -360,6 +370,7 @@ impl SemanticHighlighter {
         cursor_position: usize,
         viewport_start: usize,
         viewport_end: usize,
+        context_bytes: usize,
     ) -> Vec<HighlightSpan> {
         let parser = match &mut self.parser {
             Some(p) => p,
@@ -381,8 +392,8 @@ impl SemanticHighlighter {
         let scope_idx = self.locals_captures.scope;
 
         // Parse the entire visible region plus context
-        let parse_start = viewport_start.saturating_sub(5000);
-        let parse_end = (viewport_end + 5000).min(buffer.len());
+        let parse_start = viewport_start.saturating_sub(context_bytes);
+        let parse_end = (viewport_end + context_bytes).min(buffer.len());
         let source = buffer.slice_bytes(parse_start..parse_end);
 
         // Parse the source
@@ -394,6 +405,7 @@ impl SemanticHighlighter {
                     cursor_position,
                     viewport_start,
                     viewport_end,
+                    context_bytes,
                 );
             }
         };
@@ -567,6 +579,7 @@ impl SemanticHighlighter {
         cursor_position: usize,
         viewport_start: usize,
         viewport_end: usize,
+        context_bytes: usize,
     ) -> Vec<HighlightSpan> {
         let parser = match &mut self.parser {
             Some(p) => p,
@@ -577,9 +590,9 @@ impl SemanticHighlighter {
             None => return Vec::new(),
         };
 
-        // Get text to parse - use a bit more context around viewport for better parsing
-        let parse_start = viewport_start.saturating_sub(1000);
-        let parse_end = (viewport_end + 1000).min(buffer.len());
+        // Get text to parse - use context around viewport for better parsing
+        let parse_start = viewport_start.saturating_sub(context_bytes);
+        let parse_end = (viewport_end + context_bytes).min(buffer.len());
         let source = buffer.slice_bytes(parse_start..parse_end);
 
         // Parse the source
@@ -592,6 +605,7 @@ impl SemanticHighlighter {
                     cursor_position,
                     viewport_start,
                     viewport_end,
+                    context_bytes,
                 );
             }
         };
@@ -654,12 +668,14 @@ impl SemanticHighlighter {
     }
 
     /// Text-matching based highlighting (fallback)
+    #[allow(unused_variables)] // context_bytes not used in text matching but needed for API consistency
     fn highlight_with_text_matching(
         &self,
         buffer: &Buffer,
         cursor_position: usize,
         viewport_start: usize,
         viewport_end: usize,
+        context_bytes: usize,
     ) -> Vec<HighlightSpan> {
         // Find the word under the cursor
         let word_range = match self.get_word_at_position(buffer, cursor_position) {
@@ -868,7 +884,7 @@ mod tests {
         let mut highlighter = SemanticHighlighter::new();
 
         // Cursor on first 'foo' at position 4
-        let spans = highlighter.highlight_occurrences(&buffer, 4, 0, buffer.len());
+        let spans = highlighter.highlight_occurrences(&buffer, 4, 0, buffer.len(), 100_000);
 
         // Should find 3 occurrences of 'foo'
         assert_eq!(spans.len(), 3);
@@ -880,7 +896,7 @@ mod tests {
         let mut highlighter = SemanticHighlighter::new().with_min_length(2);
 
         // Single character 'a' at position 0 should not be highlighted
-        let spans = highlighter.highlight_occurrences(&buffer, 0, 0, buffer.len());
+        let spans = highlighter.highlight_occurrences(&buffer, 0, 0, buffer.len(), 100_000);
         assert_eq!(spans.len(), 0);
     }
 
@@ -890,7 +906,7 @@ mod tests {
         let mut highlighter = SemanticHighlighter::new();
         highlighter.enabled = false;
 
-        let spans = highlighter.highlight_occurrences(&buffer, 0, 0, buffer.len());
+        let spans = highlighter.highlight_occurrences(&buffer, 0, 0, buffer.len(), 100_000);
         assert_eq!(spans.len(), 0);
     }
 
@@ -900,7 +916,8 @@ mod tests {
         let mut highlighter = SemanticHighlighter::new();
 
         // Cursor at end of buffer (after last "foo")
-        let spans = highlighter.highlight_occurrences(&buffer, buffer.len(), 0, buffer.len());
+        let spans =
+            highlighter.highlight_occurrences(&buffer, buffer.len(), 0, buffer.len(), 100_000);
         // Should find both "foo" occurrences
         assert_eq!(spans.len(), 2);
     }
@@ -911,7 +928,7 @@ mod tests {
         let mut highlighter = SemanticHighlighter::new();
 
         // Cursor on first character of "foo"
-        let spans = highlighter.highlight_occurrences(&buffer, 0, 0, buffer.len());
+        let spans = highlighter.highlight_occurrences(&buffer, 0, 0, buffer.len(), 100_000);
         // Should find both "foo" occurrences
         assert_eq!(spans.len(), 2);
     }
@@ -922,7 +939,7 @@ mod tests {
         let mut highlighter = SemanticHighlighter::new();
 
         // Only search in viewport 4..12 (should find middle "foo" only)
-        let spans = highlighter.highlight_occurrences(&buffer, 8, 4, 12);
+        let spans = highlighter.highlight_occurrences(&buffer, 8, 4, 12, 100_000);
         assert_eq!(spans.len(), 1);
         assert_eq!(spans[0].range, 8..11);
     }
@@ -940,7 +957,7 @@ mod tests {
         // Tree-sitter mode may or may not be available depending on query support
         // If available, cursor on "foo" should highlight all occurrences
         // Position 20 should be on "foo" in "let foo = 1"
-        let spans = highlighter.highlight_occurrences(&buffer, 20, 0, buffer.len());
+        let spans = highlighter.highlight_occurrences(&buffer, 20, 0, buffer.len(), 100_000);
 
         // Should find at least the definition and reference
         // Note: Locals query may also capture "foo" in "bar = foo" as both definition and reference
@@ -960,7 +977,7 @@ mod tests {
         highlighter.set_language(&Language::Rust);
 
         // Cursor on "foo" at position 4 (first foo)
-        let spans = highlighter.highlight_occurrences(&buffer, 4, 0, buffer.len());
+        let spans = highlighter.highlight_occurrences(&buffer, 4, 0, buffer.len(), 100_000);
 
         // Should find at least 2 occurrences of foo (definition and use)
         assert!(spans.len() >= 2);
@@ -1001,7 +1018,8 @@ fn second() {
         // Find position of first "foo" definition (in first function)
         let first_foo_pos = code.find("let foo = 1").unwrap() + 4;
 
-        let spans = highlighter.highlight_occurrences(&buffer, first_foo_pos, 0, buffer.len());
+        let spans =
+            highlighter.highlight_occurrences(&buffer, first_foo_pos, 0, buffer.len(), 100_000);
 
         // Should find occurrences - exact count depends on scope resolution
         // At minimum, should find the definition and at least one reference
@@ -1034,7 +1052,8 @@ fn main() {
         // Find position of outer "foo" definition
         let outer_foo_pos = code.find("let foo = 1").unwrap() + 4;
 
-        let spans = highlighter.highlight_occurrences(&buffer, outer_foo_pos, 0, buffer.len());
+        let spans =
+            highlighter.highlight_occurrences(&buffer, outer_foo_pos, 0, buffer.len(), 100_000);
 
         // Should find occurrences - with proper shadowing this would be 2,
         // but current implementation may find more
@@ -1063,7 +1082,7 @@ fn greet(name: &str) {
         // Find position of "name" parameter
         let name_pos = code.find("name: &str").unwrap();
 
-        let spans = highlighter.highlight_occurrences(&buffer, name_pos, 0, buffer.len());
+        let spans = highlighter.highlight_occurrences(&buffer, name_pos, 0, buffer.len(), 100_000);
 
         // Should find at least 3 occurrences: parameter + 2 uses
         assert!(

@@ -79,12 +79,16 @@ impl TextMateHighlighter {
     ///
     /// This only parses the visible lines for instant performance with large files.
     /// Returns highlighted spans for the requested byte range, colored according to the theme.
+    ///
+    /// `context_bytes` controls how far before/after the viewport to parse for accurate
+    /// highlighting of multi-line constructs (strings, comments, nested blocks).
     pub fn highlight_viewport(
         &mut self,
         buffer: &Buffer,
         viewport_start: usize,
         viewport_end: usize,
         theme: &Theme,
+        context_bytes: usize,
     ) -> Vec<HighlightSpan> {
         // Check if cache is valid for this range
         if let Some(cache) = &self.cache {
@@ -108,9 +112,9 @@ impl TextMateHighlighter {
         }
 
         // Cache miss - need to parse
-        // Extend range slightly for context (helps with multi-line constructs)
-        let parse_start = viewport_start.saturating_sub(1000);
-        let parse_end = (viewport_end + 1000).min(buffer.len());
+        // Extend range for context (helps with multi-line constructs like strings, comments, nested blocks)
+        let parse_start = viewport_start.saturating_sub(context_bytes);
+        let parse_end = (viewport_end + context_bytes).min(buffer.len());
         let parse_range = parse_start..parse_end;
 
         // Limit parse size for safety

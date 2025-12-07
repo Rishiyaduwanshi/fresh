@@ -110,12 +110,16 @@ impl TextMateEngine {
     }
 
     /// Highlight the visible viewport range
+    ///
+    /// `context_bytes` controls how far before/after the viewport to parse for accurate
+    /// highlighting of multi-line constructs (strings, comments, nested blocks).
     pub fn highlight_viewport(
         &mut self,
         buffer: &Buffer,
         viewport_start: usize,
         viewport_end: usize,
         theme: &Theme,
+        context_bytes: usize,
     ) -> Vec<HighlightSpan> {
         use syntect::parsing::{ParseState, ScopeStack};
 
@@ -140,8 +144,8 @@ impl TextMateEngine {
         }
 
         // Cache miss - parse viewport region
-        let parse_start = viewport_start.saturating_sub(1000);
-        let parse_end = (viewport_end + 1000).min(buffer.len());
+        let parse_start = viewport_start.saturating_sub(context_bytes);
+        let parse_end = (viewport_end + context_bytes).min(buffer.len());
 
         if parse_end - parse_start > MAX_PARSE_BYTES {
             return Vec::new();
@@ -359,18 +363,24 @@ impl HighlightEngine {
     }
 
     /// Highlight the visible viewport
+    ///
+    /// `context_bytes` controls how far before/after the viewport to parse for accurate
+    /// highlighting of multi-line constructs (strings, comments, nested blocks).
     pub fn highlight_viewport(
         &mut self,
         buffer: &Buffer,
         viewport_start: usize,
         viewport_end: usize,
         theme: &Theme,
+        context_bytes: usize,
     ) -> Vec<HighlightSpan> {
         match self {
             Self::TreeSitter(h) => {
-                h.highlight_viewport(buffer, viewport_start, viewport_end, theme)
+                h.highlight_viewport(buffer, viewport_start, viewport_end, theme, context_bytes)
             }
-            Self::TextMate(h) => h.highlight_viewport(buffer, viewport_start, viewport_end, theme),
+            Self::TextMate(h) => {
+                h.highlight_viewport(buffer, viewport_start, viewport_end, theme, context_bytes)
+            }
             Self::None => Vec::new(),
         }
     }

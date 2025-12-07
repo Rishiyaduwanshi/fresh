@@ -76,6 +76,10 @@
           "type": "integer",
           "description": "Estimated average line length in bytes (used for large file line estimation)\nThis is used by LineIterator to estimate line positions in large files\nwithout line metadata. Typical values: 80-120 bytes."
         },
+        "highlight_context_bytes": {
+          "type": "integer",
+          "description": "Number of bytes to look back/forward from the viewport for syntax highlighting context.\nLarger values improve accuracy for multi-line constructs (strings, comments, nested blocks)\nbut may slow down highlighting for very large files.\nDefault: 10KB (10000 bytes)"
+        },
         "highlight_timeout_ms": {
           "type": "integer",
           "description": "Maximum time in milliseconds for syntax highlighting per frame"

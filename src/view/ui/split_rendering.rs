@@ -409,6 +409,7 @@ impl SplitRenderer {
         large_file_threshold_bytes: u64,
         _line_wrap: bool,
         estimated_line_length: usize,
+        highlight_context_bytes: usize,
         split_view_states: Option<
             &HashMap<crate::model::event::SplitId, crate::view::split::SplitViewState>,
         >,
@@ -520,6 +521,7 @@ impl SplitRenderer {
                     view_prefs.compose_column_guides,
                     view_prefs.view_transform,
                     estimated_line_length,
+                    highlight_context_bytes,
                     buffer_id,
                     hide_cursor,
                 );
@@ -1622,6 +1624,7 @@ impl SplitRenderer {
         viewport_end: usize,
         primary_cursor_position: usize,
         theme: &crate::view::theme::Theme,
+        highlight_context_bytes: usize,
     ) -> DecorationContext {
         // Extend highlighting range by ~1 viewport size before/after for better context.
         // This helps tree-sitter parse multi-line constructs that span viewport boundaries.
@@ -1636,6 +1639,7 @@ impl SplitRenderer {
             highlight_start,
             highlight_end,
             theme,
+            highlight_context_bytes,
         );
 
         // Update semantic highlighter color from theme
@@ -1646,6 +1650,7 @@ impl SplitRenderer {
             primary_cursor_position,
             viewport_start,
             viewport_end,
+            highlight_context_bytes,
         );
 
         let viewport_overlays = state
@@ -2339,6 +2344,7 @@ impl SplitRenderer {
         compose_column_guides: Option<Vec<u16>>,
         view_transform: Option<ViewTransformPayload>,
         estimated_line_length: usize,
+        highlight_context_bytes: usize,
         _buffer_id: BufferId,
         hide_cursor: bool,
     ) -> Vec<ViewLineMapping> {
@@ -2441,6 +2447,7 @@ impl SplitRenderer {
             viewport_end,
             selection.primary_cursor_position,
             theme,
+            highlight_context_bytes,
         );
 
         // Apply top_view_line_offset to skip virtual lines when scrolling through them
@@ -2727,6 +2734,7 @@ mod tests {
             viewport_end,
             selection.primary_cursor_position,
             &theme,
+            100_000, // default highlight context bytes
         );
 
         let output = SplitRenderer::render_view_lines(LineRenderInput {

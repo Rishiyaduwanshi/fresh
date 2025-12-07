@@ -672,12 +672,16 @@ impl Highlighter {
     ///
     /// This only parses the visible lines for instant performance with large files.
     /// Returns highlighted spans for the requested byte range, colored according to the theme.
+    ///
+    /// `context_bytes` controls how far before/after the viewport to parse for accurate
+    /// highlighting of multi-line constructs (strings, comments, nested blocks).
     pub fn highlight_viewport(
         &mut self,
         buffer: &Buffer,
         viewport_start: usize,
         viewport_end: usize,
         theme: &Theme,
+        context_bytes: usize,
     ) -> Vec<HighlightSpan> {
         // Check if cache is valid for this range
         if let Some(cache) = &self.cache {
@@ -701,9 +705,9 @@ impl Highlighter {
         }
 
         // Cache miss - need to parse
-        // Extend range slightly for context (helps with multi-line constructs)
-        let parse_start = viewport_start.saturating_sub(1000);
-        let parse_end = (viewport_end + 1000).min(buffer.len());
+        // Extend range for context (helps with multi-line constructs like strings, comments, nested blocks)
+        let parse_start = viewport_start.saturating_sub(context_bytes);
+        let parse_end = (viewport_end + context_bytes).min(buffer.len());
         let parse_range = parse_start..parse_end;
 
         // Limit parse size for safety
@@ -916,7 +920,7 @@ mod tests {
         let theme = Theme::dark();
 
         // Highlight entire buffer
-        let spans = highlighter.highlight_viewport(&buffer, 0, buffer.len(), &theme);
+        let spans = highlighter.highlight_viewport(&buffer, 0, buffer.len(), &theme, 100_000);
 
         // Should have some highlighted spans
         assert!(!spans.is_empty());
@@ -941,7 +945,8 @@ mod tests {
         // Highlight only a small viewport in the middle
         let viewport_start = 10000;
         let viewport_end = 10500;
-        let spans = highlighter.highlight_viewport(&buffer, viewport_start, viewport_end, &theme);
+        let spans =
+            highlighter.highlight_viewport(&buffer, viewport_start, viewport_end, &theme, 100_000);
 
         // Should have some spans in the viewport
         assert!(!spans.is_empty());
@@ -964,7 +969,7 @@ mod tests {
         let theme = Theme::dark();
 
         // First highlight
-        highlighter.highlight_viewport(&buffer, 0, buffer.len(), &theme);
+        highlighter.highlight_viewport(&buffer, 0, buffer.len(), &theme, 100_000);
         assert!(highlighter.cache.is_some());
 
         // Invalidate a range
@@ -972,7 +977,7 @@ mod tests {
         assert!(highlighter.cache.is_none());
 
         // Highlight again to rebuild cache
-        highlighter.highlight_viewport(&buffer, 0, buffer.len(), &theme);
+        highlighter.highlight_viewport(&buffer, 0, buffer.len(), &theme, 100_000);
         assert!(highlighter.cache.is_some());
 
         // Invalidate all
@@ -987,11 +992,13 @@ mod tests {
 
         // Highlight with dark theme
         let dark_theme = Theme::dark();
-        let dark_spans = highlighter.highlight_viewport(&buffer, 0, buffer.len(), &dark_theme);
+        let dark_spans =
+            highlighter.highlight_viewport(&buffer, 0, buffer.len(), &dark_theme, 100_000);
 
         // Highlight with light theme (cache should still work, colors should change)
         let light_theme = Theme::light();
-        let light_spans = highlighter.highlight_viewport(&buffer, 0, buffer.len(), &light_theme);
+        let light_spans =
+            highlighter.highlight_viewport(&buffer, 0, buffer.len(), &light_theme, 100_000);
 
         // Both should have spans
         assert!(!dark_spans.is_empty());
