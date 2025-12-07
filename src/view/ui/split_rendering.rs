@@ -412,8 +412,8 @@ impl SplitRenderer {
         _line_wrap: bool,
         estimated_line_length: usize,
         highlight_context_bytes: usize,
-        split_view_states: Option<
-            &HashMap<crate::model::event::SplitId, crate::view::split::SplitViewState>,
+        mut split_view_states: Option<
+            &mut HashMap<crate::model::event::SplitId, crate::view::split::SplitViewState>,
         >,
         hide_cursor: bool,
         hovered_tab: Option<(BufferId, crate::model::event::SplitId, bool)>, // (buffer_id, split_id, is_close_button)
@@ -451,7 +451,7 @@ impl SplitRenderer {
 
             let layout = Self::split_layout(split_area);
             let (split_buffers, tab_scroll_offset) =
-                Self::split_buffers_for_tabs(split_view_states, split_id, buffer_id);
+                Self::split_buffers_for_tabs(split_view_states.as_deref(), split_id, buffer_id);
 
             // Determine hover state for this split's tabs
             let tab_hover_for_split = hovered_tab.and_then(|(hover_buf, hover_split, is_close)| {
@@ -505,7 +505,8 @@ impl SplitRenderer {
             if let Some(state) = state_opt {
                 // Get viewport from SplitViewState (authoritative source)
                 // We need to get it mutably for sync operations
-                let view_state_opt = split_view_states.and_then(|vs| vs.get(&split_id));
+                // Use as_deref() to get Option<&HashMap> for read-only operations
+                let view_state_opt = split_view_states.as_deref().and_then(|vs| vs.get(&split_id));
                 let viewport_clone = view_state_opt
                     .map(|vs| vs.viewport.clone())
                     .unwrap_or_else(|| {
@@ -517,14 +518,14 @@ impl SplitRenderer {
                 let mut viewport = viewport_clone;
 
                 let saved_cursors =
-                    Self::temporary_split_state(state, split_view_states, split_id, is_active);
+                    Self::temporary_split_state(state, split_view_states.as_deref(), split_id, is_active);
                 Self::sync_viewport_to_content(
                     &mut viewport,
                     &mut state.buffer,
                     &state.cursors,
                     layout.content_rect,
                 );
-                let view_prefs = Self::resolve_view_preferences(state, split_view_states, split_id);
+                let view_prefs = Self::resolve_view_preferences(state, split_view_states.as_deref(), split_id);
 
                 let split_view_mappings = Self::render_buffer_in_split(
                     frame,
@@ -571,6 +572,14 @@ impl SplitRenderer {
 
                 // Restore the original cursors after rendering content and scrollbar
                 Self::restore_split_state(state, saved_cursors);
+
+                // Write back updated viewport to SplitViewState
+                // This is crucial for cursor visibility tracking (ensure_visible_in_layout updates)
+                if let Some(view_states) = split_view_states.as_deref_mut() {
+                    if let Some(view_state) = view_states.get_mut(&split_id) {
+                        view_state.viewport = viewport.clone();
+                    }
+                }
 
                 // Store the areas for mouse handling
                 split_areas.push((
@@ -719,13 +728,12 @@ impl SplitRenderer {
             viewport.resize(content_rect.width, content_rect.height);
         }
 
-        // Sync viewport with cursor if size changed or if marked for sync (cursor moved)
-        // Note: We don't check skip_resize_sync here because it's checked in ensure_visible_in_layout
-        // which is called during rendering and is the main place that could reset scroll position
-        if size_changed || viewport.needs_sync() {
-            let primary = *cursors.primary();
-            viewport.sync_with_cursor(buffer, &primary);
-        }
+        // Always sync viewport with cursor to ensure visibility after cursor movements
+        // The sync_with_cursor method internally checks needs_sync and skip_resize_sync
+        // so this is safe to call unconditionally. Previously needs_sync was set by
+        // EditorState.apply() but now viewport is owned by SplitViewState.
+        let primary = *cursors.primary();
+        viewport.ensure_visible(buffer, &primary);
     }
 
     fn resolve_view_preferences(

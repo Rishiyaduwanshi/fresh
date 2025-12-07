@@ -285,6 +285,10 @@ impl Viewport {
             );
 
             self.top_view_line_offset = new_offset;
+            // Also update top_byte to match the new scroll position
+            if let Some(new_top_byte) = self.get_source_byte_for_view_line(view_lines, new_offset) {
+                self.top_byte = new_top_byte;
+            }
             return true;
         }
 
@@ -318,6 +322,10 @@ impl Viewport {
                         new_offset
                     );
                     self.top_view_line_offset = new_offset;
+                    // Also update top_byte to match the new scroll position
+                    if let Some(new_top_byte) = self.get_source_byte_for_view_line(view_lines, new_offset) {
+                        self.top_byte = new_top_byte;
+                    }
                     return true;
                 }
             }
@@ -544,6 +552,12 @@ impl Viewport {
     /// Ensure a cursor is visible, scrolling if necessary (smart scroll)
     /// Now works entirely with byte offsets - no line number calculations needed!
     pub fn ensure_visible(&mut self, buffer: &mut Buffer, cursor: &Cursor) {
+        // Check if we should skip sync due to session restore
+        // This prevents the restored scroll position from being overwritten
+        if self.should_skip_resize_sync() {
+            return;
+        }
+
         // For large files with lazy loading, ensure data around cursor is loaded
         let viewport_lines = self.visible_line_count().max(1);
 
