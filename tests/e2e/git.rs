@@ -39,6 +39,10 @@ fn test_git_grep_shows_results() {
     repo.setup_typical_project();
     repo.setup_git_plugins();
 
+    // Change to repo directory so git commands work correctly
+    let original_dir = repo.change_to_repo_dir();
+    let _guard = DirGuard::new(original_dir);
+
     let mut harness = EditorTestHarness::with_config_and_working_dir(
         120,
         40,
@@ -84,6 +88,10 @@ fn test_git_grep_interactive_updates() {
     let repo = GitTestRepo::new();
     repo.setup_typical_project();
     repo.setup_git_plugins();
+
+    // Change to repo directory so git commands work correctly
+    let original_dir = repo.change_to_repo_dir();
+    let _guard = DirGuard::new(original_dir);
 
     let mut harness = EditorTestHarness::with_config_and_working_dir(
         120,
@@ -145,6 +153,10 @@ fn test_git_grep_selection_navigation() {
     repo.setup_typical_project();
     repo.setup_git_plugins();
 
+    // Change to repo directory so git commands work correctly
+    let original_dir = repo.change_to_repo_dir();
+    let _guard = DirGuard::new(original_dir);
+
     let mut harness = EditorTestHarness::with_config_and_working_dir(
         120,
         40,
@@ -190,6 +202,10 @@ fn test_git_grep_confirm_jumps_to_location() {
     let repo = GitTestRepo::new();
     repo.setup_typical_project();
     repo.setup_git_plugins();
+
+    // Change to repo directory so git commands work correctly
+    let original_dir = repo.change_to_repo_dir();
+    let _guard = DirGuard::new(original_dir);
 
     let mut harness = EditorTestHarness::with_config_and_working_dir(
         120,
@@ -250,6 +266,10 @@ fn test_git_grep_cancel() {
     let repo = GitTestRepo::new();
     repo.setup_typical_project();
     repo.setup_git_plugins();
+
+    // Change to repo directory so git commands work correctly
+    let original_dir = repo.change_to_repo_dir();
+    let _guard = DirGuard::new(original_dir);
 
     let mut harness = EditorTestHarness::with_config_and_working_dir(
         120,
@@ -328,6 +348,10 @@ fn test_git_find_file_interactive_filtering() {
     repo.setup_typical_project();
     repo.setup_git_plugins();
 
+    // Change to repo directory so git commands work correctly
+    let original_dir = repo.change_to_repo_dir();
+    let _guard = DirGuard::new(original_dir);
+
     let mut harness = EditorTestHarness::with_config_and_working_dir(
         120,
         40,
@@ -392,6 +416,10 @@ fn test_git_find_file_selection_navigation() {
     repo.setup_typical_project();
     repo.setup_git_plugins();
 
+    // Change to repo directory so git commands work correctly
+    let original_dir = repo.change_to_repo_dir();
+    let _guard = DirGuard::new(original_dir);
+
     let mut harness = EditorTestHarness::with_config_and_working_dir(
         120,
         40,
@@ -433,6 +461,10 @@ fn test_git_find_file_confirm_opens_file() {
     let repo = GitTestRepo::new();
     repo.setup_typical_project();
     repo.setup_git_plugins();
+
+    // Change to repo directory so git commands work correctly
+    let original_dir = repo.change_to_repo_dir();
+    let _guard = DirGuard::new(original_dir);
 
     let mut harness = EditorTestHarness::with_config_and_working_dir(
         120,
@@ -494,6 +526,10 @@ fn test_git_grep_scrolling_many_results() {
     repo.setup_many_files(50);
     repo.setup_git_plugins();
 
+    // Change to repo directory so git commands work correctly
+    let original_dir = repo.change_to_repo_dir();
+    let _guard = DirGuard::new(original_dir);
+
     let mut harness = EditorTestHarness::with_config_and_working_dir(
         120,
         40,
@@ -534,6 +570,10 @@ fn test_git_find_file_scrolling_many_files() {
     let repo = GitTestRepo::new();
     repo.setup_many_files(50);
     repo.setup_git_plugins();
+
+    // Change to repo directory so git commands work correctly
+    let original_dir = repo.change_to_repo_dir();
+    let _guard = DirGuard::new(original_dir);
 
     let mut harness = EditorTestHarness::with_config_and_working_dir(
         120,
@@ -578,6 +618,10 @@ fn test_git_commands_via_command_palette() {
     let repo = GitTestRepo::new();
     repo.setup_typical_project();
     repo.setup_git_plugins();
+
+    // Change to repo directory so git commands work correctly
+    let original_dir = repo.change_to_repo_dir();
+    let _guard = DirGuard::new(original_dir);
 
     let mut harness = EditorTestHarness::with_config_and_working_dir(
         120,
