@@ -70,6 +70,21 @@ pub fn format_keybinding(keycode: &KeyCode, modifiers: &KeyModifiers) -> String 
     result
 }
 
+/// Returns a priority score for a keybinding key.
+/// Lower scores indicate canonical/preferred keys, higher scores indicate terminal equivalents.
+/// This helps ensure deterministic selection when multiple keybindings exist for an action.
+fn keybinding_priority_score(key: &KeyCode) -> u32 {
+    match key {
+        // Terminal equivalents get higher scores (deprioritized)
+        KeyCode::Char('@') => 100, // Equivalent of Space
+        KeyCode::Char('7') => 100, // Equivalent of /
+        KeyCode::Char('_') => 100, // Equivalent of -
+        // Ctrl+H as backspace equivalent is handled differently (only plain Ctrl+H)
+        // All other keys get default priority
+        _ => 0,
+    }
+}
+
 /// Returns terminal key equivalents for a given key combination.
 ///
 /// Some key combinations are sent differently by terminals:
@@ -1533,27 +1548,61 @@ impl KeybindingResolver {
 
     /// Get the keybinding string for an action in a specific context
     /// Returns the first keybinding found (prioritizing custom bindings over defaults)
+    /// When multiple keybindings exist for the same action, prefers canonical keys over
+    /// terminal equivalents (e.g., "Space" over "@")
     /// Returns None if no binding is found
     pub fn get_keybinding_for_action(
         &self,
         action: &Action,
         context: KeyContext,
     ) -> Option<String> {
+        // Helper to collect all matching keybindings from a map and pick the best one
+        fn find_best_keybinding(
+            bindings: &HashMap<(KeyCode, KeyModifiers), Action>,
+            action: &Action,
+        ) -> Option<(KeyCode, KeyModifiers)> {
+            let matches: Vec<_> = bindings
+                .iter()
+                .filter(|(_, a)| *a == action)
+                .map(|((k, m), _)| (*k, *m))
+                .collect();
+
+            if matches.is_empty() {
+                return None;
+            }
+
+            // Sort to prefer canonical keys over terminal equivalents
+            // Terminal equivalents like '@' (for space), '7' (for '/'), etc. should be deprioritized
+            let mut sorted = matches;
+            sorted.sort_by(|(k1, m1), (k2, m2)| {
+                let score1 = keybinding_priority_score(k1);
+                let score2 = keybinding_priority_score(k2);
+                // Lower score = higher priority
+                match score1.cmp(&score2) {
+                    std::cmp::Ordering::Equal => {
+                        // Tie-break by formatted string for full determinism
+                        let s1 = format_keybinding(k1, m1);
+                        let s2 = format_keybinding(k2, m2);
+                        s1.cmp(&s2)
+                    }
+                    other => other,
+                }
+            });
+
+            sorted.into_iter().next()
+        }
+
         // Check custom bindings first (higher priority)
         if let Some(context_bindings) = self.bindings.get(&context) {
-            for ((keycode, modifiers), bound_action) in context_bindings {
-                if bound_action == action {
-                    return Some(format_keybinding(keycode, modifiers));
-                }
+            if let Some((keycode, modifiers)) = find_best_keybinding(context_bindings, action) {
+                return Some(format_keybinding(&keycode, &modifiers));
             }
         }
 
         // Check default bindings for this context
         if let Some(context_bindings) = self.default_bindings.get(&context) {
-            for ((keycode, modifiers), bound_action) in context_bindings {
-                if bound_action == action {
-                    return Some(format_keybinding(keycode, modifiers));
-                }
+            if let Some((keycode, modifiers)) = find_best_keybinding(context_bindings, action) {
+                return Some(format_keybinding(&keycode, &modifiers));
             }
         }
 
@@ -1561,19 +1610,15 @@ impl KeybindingResolver {
         if context != KeyContext::Normal && Self::is_application_wide_action(action) {
             // Check custom normal bindings
             if let Some(normal_bindings) = self.bindings.get(&KeyContext::Normal) {
-                for ((keycode, modifiers), bound_action) in normal_bindings {
-                    if bound_action == action {
-                        return Some(format_keybinding(keycode, modifiers));
-                    }
+                if let Some((keycode, modifiers)) = find_best_keybinding(normal_bindings, action) {
+                    return Some(format_keybinding(&keycode, &modifiers));
                 }
             }
 
             // Check default normal bindings
             if let Some(normal_bindings) = self.default_bindings.get(&KeyContext::Normal) {
-                for ((keycode, modifiers), bound_action) in normal_bindings {
-                    if bound_action == action {
-                        return Some(format_keybinding(keycode, modifiers));
-                    }
+                if let Some((keycode, modifiers)) = find_best_keybinding(normal_bindings, action) {
+                    return Some(format_keybinding(&keycode, &modifiers));
                 }
             }
         }

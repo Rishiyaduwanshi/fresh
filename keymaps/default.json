@@ -679,13 +679,6 @@
       "when": "normal"
     },
     {
-      "key": " ",
-      "modifiers": ["ctrl", "shift"],
-      "action": "lsp_signature_help",
-      "args": {},
-      "when": "normal"
-    },
-    {
       "key": "k",
       "modifiers": ["alt"],
       "action": "lsp_hover",

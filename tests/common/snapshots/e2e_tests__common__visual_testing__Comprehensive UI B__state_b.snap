@@ -29,6 +29,6 @@ expression: "&screen_text"
 ~                                                                                                                      █
 ~                                                                                                                      █
 ┌──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
-│  Show Signature Help             Ctrl+Shift+@  Show function parameter hints                                  builtin│
+│  Show Signature Help                           Show function parameter hints                                  builtin│
 └──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
 Command: help
