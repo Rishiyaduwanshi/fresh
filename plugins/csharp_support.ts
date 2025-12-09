@@ -46,13 +46,13 @@ async function restoreProject(projectPath: string): Promise<void> {
 }
 
 /**
- * Handle LSP server requests from csharp-language-server (Roslyn-based)
+ * Handle LSP server requests from C# language servers (Roslyn-based)
  */
 globalThis.on_csharp_lsp_server_request = function (
   data: LspServerRequestData
 ): void {
-  // Only handle requests from csharp-language-server
-  if (data.server_command !== "csharp-language-server") {
+  // Only handle requests from C# language servers
+  if (data.server_command !== "csharp-ls" && data.server_command !== "csharp-language-server") {
     return;
   }
 
