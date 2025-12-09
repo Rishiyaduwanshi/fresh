@@ -928,6 +928,16 @@ impl JsBackend for QuickJsBackend {
         let source = std::fs::read_to_string(path)
             .map_err(|e| anyhow!("Failed to read module '{}': {}", path, e))?;
 
+        // Check for ES module imports - QuickJS eval() doesn't support them
+        // Skip plugins that use imports until we implement module bundling
+        if source.contains("import ") && (source.contains(" from ") || source.contains("from '") || source.contains("from \"")) {
+            tracing::warn!(
+                "Skipping plugin '{}' - ES module imports not yet supported in QuickJS backend",
+                path
+            );
+            return Ok(());
+        }
+
         // Transpile if TypeScript
         let code = if path.ends_with(".ts") {
             transpile_typescript(&source, path)?

@@ -186,10 +186,13 @@ oxc_semantic = "0.102"
 
 ## Known Limitations
 
-1. **No async/await in plugin API** - QuickJS supports async, but our API is synchronous
-2. **Limited TypeScript features** - Only type stripping, no enum transforms etc.
-3. **No ES modules** - Uses IIFE wrapping, not true ES module system
-4. **Stub implementations** - Many APIs just log warnings
+1. **No ES module imports** - Plugins with `import ... from` are skipped (e.g., clangd_support.ts)
+   - Workaround: Inline dependencies or use global state
+   - Future: Implement module bundling at transpilation time
+2. **No async/await in plugin API** - QuickJS supports async, but our API is synchronous
+3. **Limited TypeScript features** - Only type stripping, no enum transforms etc.
+4. **IIFE scope isolation** - Uses IIFE wrapping instead of true ES module system
+5. **Stub implementations** - Many APIs just log warnings (see list above)
 
 ## References
 
