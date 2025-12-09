@@ -1,7 +1,5 @@
 // Editor library - exposes all core modules for testing
 
-pub mod v8_init;
-
 // Core modules at root level
 pub mod config;
 pub mod session;

@@ -7,6 +7,9 @@
 //! It has a much smaller footprint than V8 but covers the ES features needed
 //! by Fresh plugins.
 
+use crate::input::commands::{Command, CommandSource};
+use crate::input::keybindings::Action;
+use crate::model::event::BufferId;
 use crate::services::plugins::api::{EditorStateSnapshot, PluginCommand, PluginResponse};
 use crate::services::plugins::backend::{JsBackend, PendingResponses};
 use anyhow::{anyhow, Result};
@@ -18,20 +21,20 @@ use std::rc::Rc;
 use std::sync::{Arc, RwLock};
 
 /// Transpile TypeScript to JavaScript using oxc
+///
+/// Note: For now, only parses and regenerates the code.
+/// TypeScript type stripping will be added when oxc API stabilizes.
+#[allow(dead_code)]
 fn transpile_typescript(source: &str, filename: &str) -> Result<String> {
     use oxc_allocator::Allocator;
+    use oxc_codegen::Codegen;
     use oxc_parser::Parser;
     use oxc_span::SourceType;
-    use oxc_transformer::{TransformOptions, Transformer};
 
     let allocator = Allocator::default();
 
     // Parse as TypeScript
-    let source_type = SourceType::from_path(filename).unwrap_or_else(|_| {
-        SourceType::default()
-            .with_typescript(true)
-            .with_module(true)
-    });
+    let source_type = SourceType::from_path(filename).unwrap_or_else(|_| SourceType::ts());
 
     let parser_ret = Parser::new(&allocator, source, source_type).parse();
 
@@ -40,26 +43,9 @@ fn transpile_typescript(source: &str, filename: &str) -> Result<String> {
         return Err(anyhow!("TypeScript parse errors: {}", errors.join(", ")));
     }
 
-    let mut program = parser_ret.program;
-
-    // Transform (strip types)
-    let transform_options = TransformOptions::default();
-    let transformer_ret = Transformer::new(&allocator, Path::new(filename), &transform_options)
-        .build_with_symbols_and_scopes(
-            parser_ret.trivias,
-            parser_ret.panicked,
-            &mut program,
-        );
-
-    if !transformer_ret.errors.is_empty() {
-        let errors: Vec<String> = transformer_ret.errors.iter().map(|e| e.to_string()).collect();
-        return Err(anyhow!("TypeScript transform errors: {}", errors.join(", ")));
-    }
-
-    // Generate JavaScript output using oxc_codegen
-    use oxc_codegen::Codegen;
+    // Generate JavaScript output (oxc parser handles TS syntax)
     let codegen = Codegen::new();
-    let output = codegen.build(&program);
+    let output = codegen.build(&parser_ret.program);
 
     Ok(output.code)
 }
@@ -75,6 +61,7 @@ struct QuickJsState {
     /// Pending response senders for async operations
     pending_responses: PendingResponses,
     /// Next request ID for async operations
+    #[allow(dead_code)]
     next_request_id: Rc<RefCell<u64>>,
     /// Current plugin source (for registerCommand)
     current_plugin_source: Rc<RefCell<Option<String>>>,
@@ -82,6 +69,7 @@ struct QuickJsState {
 
 /// QuickJS backend - lightweight JavaScript runtime
 pub struct QuickJsBackend {
+    #[allow(dead_code)]
     runtime: Runtime,
     context: Context,
     /// Shared event handlers registry
@@ -214,7 +202,7 @@ impl QuickJsBackend {
                 let state = state.borrow();
                 let _ = state
                     .command_sender
-                    .send(PluginCommand::CopyToClipboard { text });
+                    .send(PluginCommand::SetClipboard { text });
             })
             .map_err(|e| anyhow!("Failed to create copyToClipboard: {}", e))?;
             editor
@@ -223,14 +211,14 @@ impl QuickJsBackend {
         }
 
         // === Buffer queries ===
+        // Clone the Arc directly for use in closures
+        let snapshot_arc = state.borrow().state_snapshot.clone();
 
         // editor.getActiveBufferId()
         {
-            let state = state.clone();
-            let get_active_buffer = Function::new(ctx.clone(), move || -> Option<u64> {
-                let state = state.borrow();
-                let snapshot = state.state_snapshot.read().ok()?;
-                snapshot.active_buffer_id.map(|id| id.0)
+            let snapshot = snapshot_arc.clone();
+            let get_active_buffer = Function::new(ctx.clone(), move || -> usize {
+                snapshot.read().map(|s| s.active_buffer_id.0).unwrap_or(0)
             })
             .map_err(|e| anyhow!("Failed to create getActiveBufferId: {}", e))?;
             editor
@@ -240,11 +228,12 @@ impl QuickJsBackend {
 
         // editor.getCursorPosition()
         {
-            let state = state.clone();
-            let get_cursor = Function::new(ctx.clone(), move || -> Option<u64> {
-                let state = state.borrow();
-                let snapshot = state.state_snapshot.read().ok()?;
-                snapshot.cursor_position
+            let snapshot = snapshot_arc.clone();
+            let get_cursor = Function::new(ctx.clone(), move || -> Option<usize> {
+                snapshot
+                    .read()
+                    .ok()
+                    .and_then(|s| s.primary_cursor.as_ref().map(|c| c.position))
             })
             .map_err(|e| anyhow!("Failed to create getCursorPosition: {}", e))?;
             editor
@@ -254,16 +243,18 @@ impl QuickJsBackend {
 
         // editor.getBufferPath(bufferId)
         {
-            let state = state.clone();
-            let get_path = Function::new(ctx.clone(), move |buffer_id: u64| -> Option<String> {
-                let state = state.borrow();
-                let snapshot = state.state_snapshot.read().ok()?;
-                let bid = crate::model::event::BufferId(buffer_id);
+            let snapshot = snapshot_arc.clone();
+            let get_path = Function::new(ctx.clone(), move |buffer_id: usize| -> Option<String> {
+                let bid = BufferId(buffer_id);
                 snapshot
-                    .buffer_paths
-                    .get(&bid)
-                    .and_then(|p| p.as_ref())
-                    .map(|p| p.to_string_lossy().to_string())
+                    .read()
+                    .ok()
+                    .and_then(|s| {
+                        s.buffers
+                            .get(&bid)
+                            .and_then(|info| info.path.as_ref())
+                            .map(|p| p.to_string_lossy().to_string())
+                    })
             })
             .map_err(|e| anyhow!("Failed to create getBufferPath: {}", e))?;
             editor
@@ -273,12 +264,13 @@ impl QuickJsBackend {
 
         // editor.getBufferLength(bufferId)
         {
-            let state = state.clone();
-            let get_len = Function::new(ctx.clone(), move |buffer_id: u64| -> Option<u64> {
-                let state = state.borrow();
-                let snapshot = state.state_snapshot.read().ok()?;
-                let bid = crate::model::event::BufferId(buffer_id);
-                snapshot.buffer_lengths.get(&bid).copied()
+            let snapshot = snapshot_arc.clone();
+            let get_len = Function::new(ctx.clone(), move |buffer_id: usize| -> Option<usize> {
+                let bid = BufferId(buffer_id);
+                snapshot
+                    .read()
+                    .ok()
+                    .and_then(|s| s.buffers.get(&bid).map(|info| info.length))
             })
             .map_err(|e| anyhow!("Failed to create getBufferLength: {}", e))?;
             editor
@@ -288,15 +280,14 @@ impl QuickJsBackend {
 
         // editor.isBufferModified(bufferId)
         {
-            let state = state.clone();
-            let is_modified = Function::new(ctx.clone(), move |buffer_id: u64| -> bool {
-                let state = state.borrow();
-                if let Ok(snapshot) = state.state_snapshot.read() {
-                    let bid = crate::model::event::BufferId(buffer_id);
-                    snapshot.buffer_modified.get(&bid).copied().unwrap_or(false)
-                } else {
-                    false
-                }
+            let snapshot = snapshot_arc.clone();
+            let is_modified = Function::new(ctx.clone(), move |buffer_id: usize| -> bool {
+                let bid = BufferId(buffer_id);
+                snapshot
+                    .read()
+                    .ok()
+                    .and_then(|s| s.buffers.get(&bid).map(|info| info.modified))
+                    .unwrap_or(false)
             })
             .map_err(|e| anyhow!("Failed to create isBufferModified: {}", e))?;
             editor
@@ -311,9 +302,9 @@ impl QuickJsBackend {
             let state = state.clone();
             let insert_text = Function::new(
                 ctx.clone(),
-                move |buffer_id: u64, position: u64, text: String| {
+                move |buffer_id: usize, position: usize, text: String| {
                     let state = state.borrow();
-                    let bid = crate::model::event::BufferId(buffer_id);
+                    let bid = BufferId(buffer_id);
                     let _ = state.command_sender.send(PluginCommand::InsertText {
                         buffer_id: bid,
                         position,
@@ -331,13 +322,12 @@ impl QuickJsBackend {
         {
             let state = state.clone();
             let delete_range =
-                Function::new(ctx.clone(), move |buffer_id: u64, start: u64, end: u64| {
+                Function::new(ctx.clone(), move |buffer_id: usize, start: usize, end: usize| {
                     let state = state.borrow();
-                    let bid = crate::model::event::BufferId(buffer_id);
+                    let bid = BufferId(buffer_id);
                     let _ = state.command_sender.send(PluginCommand::DeleteRange {
                         buffer_id: bid,
-                        start,
-                        end,
+                        range: start..end,
                     });
                 })
                 .map_err(|e| anyhow!("Failed to create deleteRange: {}", e))?;
@@ -375,34 +365,32 @@ impl QuickJsBackend {
                         .borrow()
                         .clone()
                         .unwrap_or_default();
-                    let _ = state.command_sender.send(PluginCommand::RegisterCommand {
+
+                    // Parse custom contexts from comma-separated string
+                    let custom_contexts: Vec<String> = if contexts.is_empty() {
+                        Vec::new()
+                    } else {
+                        contexts.split(',').map(|s| s.trim().to_string()).collect()
+                    };
+
+                    let command = Command {
                         name,
                         description,
-                        action,
-                        contexts,
-                        source,
-                    });
+                        action: Action::PluginAction(action),
+                        contexts: Vec::new(), // No built-in key contexts
+                        custom_contexts,
+                        source: CommandSource::Plugin(source),
+                    };
+
+                    let _ = state
+                        .command_sender
+                        .send(PluginCommand::RegisterCommand { command });
                 },
             )
             .map_err(|e| anyhow!("Failed to create registerCommand: {}", e))?;
             editor
                 .set("registerCommand", register_cmd)
                 .map_err(|e| anyhow!("Failed to set registerCommand: {}", e))?;
-        }
-
-        // editor.unregisterCommand(name)
-        {
-            let state = state.clone();
-            let unregister_cmd = Function::new(ctx.clone(), move |name: String| {
-                let state = state.borrow();
-                let _ = state
-                    .command_sender
-                    .send(PluginCommand::UnregisterCommand { name });
-            })
-            .map_err(|e| anyhow!("Failed to create unregisterCommand: {}", e))?;
-            editor
-                .set("unregisterCommand", unregister_cmd)
-                .map_err(|e| anyhow!("Failed to set unregisterCommand: {}", e))?;
         }
 
         // === Context management ===
@@ -424,19 +412,16 @@ impl QuickJsBackend {
 
         // === File operations ===
 
-        // editor.openFile(path, line, column)
+        // editor.openFile(path) - Opens file in background
         {
             let state = state.clone();
-            let open_file =
-                Function::new(ctx.clone(), move |path: String, line: u32, column: u32| {
-                    let state = state.borrow();
-                    let _ = state.command_sender.send(PluginCommand::OpenFile {
-                        path,
-                        line,
-                        column,
-                    });
-                })
-                .map_err(|e| anyhow!("Failed to create openFile: {}", e))?;
+            let open_file = Function::new(ctx.clone(), move |path: String| {
+                let state = state.borrow();
+                let _ = state.command_sender.send(PluginCommand::OpenFileInBackground {
+                    path: std::path::PathBuf::from(path),
+                });
+            })
+            .map_err(|e| anyhow!("Failed to create openFile: {}", e))?;
             editor
                 .set("openFile", open_file)
                 .map_err(|e| anyhow!("Failed to set openFile: {}", e))?;
@@ -446,11 +431,9 @@ impl QuickJsBackend {
 
         // editor.getActiveSplitId()
         {
-            let state = state.clone();
-            let get_active_split = Function::new(ctx.clone(), move || -> Option<u64> {
-                let state = state.borrow();
-                let snapshot = state.state_snapshot.read().ok()?;
-                snapshot.active_split_id.map(|id| id.0)
+            let snapshot = snapshot_arc.clone();
+            let get_active_split = Function::new(ctx.clone(), move || -> usize {
+                snapshot.read().map(|s| s.active_split_id).unwrap_or(0)
             })
             .map_err(|e| anyhow!("Failed to create getActiveSplitId: {}", e))?;
             editor
@@ -459,20 +442,7 @@ impl QuickJsBackend {
         }
 
         // === Cursor operations ===
-
-        // editor.getCursorLine()
-        {
-            let state = state.clone();
-            let get_cursor_line = Function::new(ctx.clone(), move || -> Option<u32> {
-                let state = state.borrow();
-                let snapshot = state.state_snapshot.read().ok()?;
-                snapshot.cursor_line
-            })
-            .map_err(|e| anyhow!("Failed to create getCursorLine: {}", e))?;
-            editor
-                .set("getCursorLine", get_cursor_line)
-                .map_err(|e| anyhow!("Failed to set getCursorLine: {}", e))?;
-        }
+        // Note: CursorInfo only has position and selection, no line field
 
         // === Event/Hook operations ===
 
@@ -622,53 +592,12 @@ impl QuickJsBackend {
                 .map_err(|e| anyhow!("Failed to set writeFile: {}", e))?;
         }
 
-        // === Overlay operations (stubs for now - need more complex types) ===
-
-        // editor.addOverlay - stub
-        {
-            let add_overlay = Function::new(
-                ctx.clone(),
-                |_buffer_id: u64,
-                 _namespace: String,
-                 _start: u64,
-                 _end: u64,
-                 _r: u8,
-                 _g: u8,
-                 _b: u8,
-                 _underline: bool|
-                 -> u64 {
-                    // TODO: Implement properly with PluginCommand
-                    0
-                },
-            )
-            .map_err(|e| anyhow!("Failed to create addOverlay: {}", e))?;
-            editor
-                .set("addOverlay", add_overlay)
-                .map_err(|e| anyhow!("Failed to set addOverlay: {}", e))?;
-        }
-
-        // editor.clearAllOverlays - stub
-        {
-            let state = state.clone();
-            let clear_overlays = Function::new(ctx.clone(), move |buffer_id: u64| {
-                let state = state.borrow();
-                let bid = crate::model::event::BufferId(buffer_id);
-                let _ = state
-                    .command_sender
-                    .send(PluginCommand::ClearAllOverlays { buffer_id: bid });
-            })
-            .map_err(|e| anyhow!("Failed to create clearAllOverlays: {}", e))?;
-            editor
-                .set("clearAllOverlays", clear_overlays)
-                .map_err(|e| anyhow!("Failed to set clearAllOverlays: {}", e))?;
-        }
-
         // editor.showBuffer(bufferId)
         {
             let state = state.clone();
-            let show_buffer = Function::new(ctx.clone(), move |buffer_id: u64| {
+            let show_buffer = Function::new(ctx.clone(), move |buffer_id: usize| {
                 let state = state.borrow();
-                let bid = crate::model::event::BufferId(buffer_id);
+                let bid = BufferId(buffer_id);
                 let _ = state
                     .command_sender
                     .send(PluginCommand::ShowBuffer { buffer_id: bid });
@@ -682,9 +611,9 @@ impl QuickJsBackend {
         // editor.closeBuffer(bufferId)
         {
             let state = state.clone();
-            let close_buffer = Function::new(ctx.clone(), move |buffer_id: u64| {
+            let close_buffer = Function::new(ctx.clone(), move |buffer_id: usize| {
                 let state = state.borrow();
-                let bid = crate::model::event::BufferId(buffer_id);
+                let bid = BufferId(buffer_id);
                 let _ = state
                     .command_sender
                     .send(PluginCommand::CloseBuffer { buffer_id: bid });
@@ -698,9 +627,9 @@ impl QuickJsBackend {
         // editor.setBufferCursor(bufferId, position)
         {
             let state = state.clone();
-            let set_cursor = Function::new(ctx.clone(), move |buffer_id: u64, position: u64| {
+            let set_cursor = Function::new(ctx.clone(), move |buffer_id: usize, position: usize| {
                 let state = state.borrow();
-                let bid = crate::model::event::BufferId(buffer_id);
+                let bid = BufferId(buffer_id);
                 let _ = state.command_sender.send(PluginCommand::SetBufferCursor {
                     buffer_id: bid,
                     position,
@@ -722,11 +651,6 @@ impl QuickJsBackend {
                 .map_err(|e| anyhow!("Script execution error: {}", e))?;
             Ok(())
         })
-    }
-
-    /// Get a reference to the state
-    pub fn state(&self) -> &Rc<RefCell<QuickJsState>> {
-        &self.state
     }
 }
 

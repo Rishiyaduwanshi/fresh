@@ -11,8 +11,8 @@
 
 use crate::input::command_registry::CommandRegistry;
 use crate::services::plugins::api::{EditorStateSnapshot, PluginCommand};
+use crate::services::plugins::backend::{JsBackend, PendingResponses, PluginInfo, QuickJsBackend};
 use crate::services::plugins::hooks::{hook_args_to_json, HookArgs};
-use crate::services::plugins::runtime::{TsPluginInfo, TypeScriptRuntime};
 use anyhow::{anyhow, Result};
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -65,7 +65,7 @@ pub enum PluginRequest {
 
     /// List all loaded plugins
     ListPlugins {
-        response: oneshot::Sender<Vec<TsPluginInfo>>,
+        response: oneshot::Sender<Vec<PluginInfo>>,
     },
 
     /// Shutdown the plugin thread
@@ -136,7 +136,7 @@ pub struct PluginThreadHandle {
     commands: Arc<RwLock<CommandRegistry>>,
 
     /// Pending response senders for async operations (shared with runtime)
-    pending_responses: crate::services::plugins::runtime::PendingResponses,
+    pending_responses: PendingResponses,
 
     /// Receiver for plugin commands (polled by editor directly)
     command_receiver: std::sync::mpsc::Receiver<PluginCommand>,
@@ -152,7 +152,7 @@ impl PluginThreadHandle {
         let state_snapshot = Arc::new(RwLock::new(EditorStateSnapshot::new()));
 
         // Create pending responses map (shared between handle and runtime)
-        let pending_responses: crate::services::plugins::runtime::PendingResponses =
+        let pending_responses: PendingResponses =
             Arc::new(std::sync::Mutex::new(std::collections::HashMap::new()));
         let thread_pending_responses = Arc::clone(&pending_responses);
 
@@ -177,21 +177,21 @@ impl PluginThreadHandle {
                 }
             };
 
-            // Create TypeScript runtime with state
-            let runtime = match TypeScriptRuntime::with_state_and_responses(
+            // Create QuickJS runtime with state
+            let runtime = match QuickJsBackend::new(
                 Arc::clone(&thread_state_snapshot),
                 command_sender,
                 thread_pending_responses,
             ) {
                 Ok(rt) => rt,
                 Err(e) => {
-                    tracing::error!("Failed to create TypeScript runtime: {}", e);
+                    tracing::error!("Failed to create QuickJS runtime: {}", e);
                     return;
                 }
             };
 
             // Create internal manager state
-            let mut plugins: HashMap<String, TsPluginInfo> = HashMap::new();
+            let mut plugins: HashMap<String, PluginInfo> = HashMap::new();
 
             // Run the event loop with a LocalSet to allow concurrent task execution
             let local = tokio::task::LocalSet::new();
@@ -328,7 +328,7 @@ impl PluginThreadHandle {
     }
 
     /// List all loaded plugins (blocking)
-    pub fn list_plugins(&self) -> Vec<TsPluginInfo> {
+    pub fn list_plugins(&self) -> Vec<PluginInfo> {
         let (tx, rx) = oneshot::channel();
         if self
             .request_sender
@@ -381,7 +381,7 @@ impl Drop for PluginThreadHandle {
 }
 
 fn respond_to_pending(
-    pending_responses: &crate::services::plugins::runtime::PendingResponses,
+    pending_responses: &PendingResponses,
     response: crate::services::plugins::api::PluginResponse,
 ) {
     let request_id = match &response {
@@ -405,7 +405,7 @@ fn respond_to_pending(
 mod plugin_thread_tests {
     use super::*;
     use crate::services::plugins::api::PluginResponse;
-    use crate::services::plugins::runtime::PendingResponses;
+    use super::PendingResponses;
     use serde_json::json;
     use std::collections::HashMap;
     use std::sync::{Arc, Mutex};
@@ -465,8 +465,8 @@ mod plugin_thread_tests {
 
 /// Main loop for the plugin thread
 async fn plugin_thread_loop(
-    runtime: Rc<RefCell<TypeScriptRuntime>>,
-    plugins: &mut HashMap<String, TsPluginInfo>,
+    runtime: Rc<RefCell<QuickJsBackend>>,
+    plugins: &mut HashMap<String, PluginInfo>,
     commands: &Arc<RwLock<CommandRegistry>>,
     mut request_receiver: tokio::sync::mpsc::UnboundedReceiver<PluginRequest>,
 ) {
@@ -506,7 +506,7 @@ async fn plugin_thread_loop(
 async fn execute_action_with_hooks(
     action_name: &str,
     response: oneshot::Sender<Result<()>>,
-    runtime: Rc<RefCell<TypeScriptRuntime>>,
+    runtime: Rc<RefCell<QuickJsBackend>>,
 ) {
     tracing::trace!(
         "execute_action_with_hooks: starting action '{}'",
@@ -536,9 +536,9 @@ async fn execute_action_with_hooks(
     let _ = response.send(result);
 }
 
-/// Run a hook with Rc<RefCell<TypeScriptRuntime>>
+/// Run a hook with Rc<RefCell<QuickJsBackend>>
 async fn run_hook_internal_rc(
-    runtime: Rc<RefCell<TypeScriptRuntime>>,
+    runtime: Rc<RefCell<QuickJsBackend>>,
     hook_name: &str,
     args: &HookArgs,
 ) -> Result<()> {
@@ -554,8 +554,8 @@ async fn run_hook_internal_rc(
 /// Handle a single request in the plugin thread
 async fn handle_request(
     request: PluginRequest,
-    runtime: Rc<RefCell<TypeScriptRuntime>>,
-    plugins: &mut HashMap<String, TsPluginInfo>,
+    runtime: Rc<RefCell<QuickJsBackend>>,
+    plugins: &mut HashMap<String, PluginInfo>,
     commands: &Arc<RwLock<CommandRegistry>>,
 ) -> bool {
     match request {
@@ -614,7 +614,7 @@ async fn handle_request(
         }
 
         PluginRequest::ListPlugins { response } => {
-            let plugin_list: Vec<TsPluginInfo> = plugins.values().cloned().collect();
+            let plugin_list: Vec<PluginInfo> = plugins.values().cloned().collect();
             let _ = response.send(plugin_list);
         }
 
@@ -629,8 +629,8 @@ async fn handle_request(
 
 /// Load a plugin from a file
 async fn load_plugin_internal(
-    runtime: Rc<RefCell<TypeScriptRuntime>>,
-    plugins: &mut HashMap<String, TsPluginInfo>,
+    runtime: Rc<RefCell<QuickJsBackend>>,
+    plugins: &mut HashMap<String, PluginInfo>,
     path: &Path,
 ) -> Result<()> {
     let plugin_name = path
@@ -648,13 +648,13 @@ async fn load_plugin_internal(
 
     runtime
         .borrow_mut()
-        .load_module_with_source(path_str, &plugin_name)
+        .load_module(path_str, &plugin_name)
         .await?;
 
     // Store plugin info
     plugins.insert(
         plugin_name.clone(),
-        TsPluginInfo {
+        PluginInfo {
             name: plugin_name,
             path: path.to_path_buf(),
             enabled: true,
@@ -666,8 +666,8 @@ async fn load_plugin_internal(
 
 /// Load all plugins from a directory
 async fn load_plugins_from_dir_internal(
-    runtime: Rc<RefCell<TypeScriptRuntime>>,
-    plugins: &mut HashMap<String, TsPluginInfo>,
+    runtime: Rc<RefCell<QuickJsBackend>>,
+    plugins: &mut HashMap<String, PluginInfo>,
     dir: &Path,
 ) -> Vec<String> {
     let mut errors = Vec::new();
@@ -705,7 +705,7 @@ async fn load_plugins_from_dir_internal(
 
 /// Unload a plugin
 fn unload_plugin_internal(
-    plugins: &mut HashMap<String, TsPluginInfo>,
+    plugins: &mut HashMap<String, PluginInfo>,
     commands: &Arc<RwLock<CommandRegistry>>,
     name: &str,
 ) -> Result<()> {
@@ -724,8 +724,8 @@ fn unload_plugin_internal(
 
 /// Reload a plugin
 async fn reload_plugin_internal(
-    runtime: Rc<RefCell<TypeScriptRuntime>>,
-    plugins: &mut HashMap<String, TsPluginInfo>,
+    runtime: Rc<RefCell<QuickJsBackend>>,
+    plugins: &mut HashMap<String, PluginInfo>,
     commands: &Arc<RwLock<CommandRegistry>>,
     name: &str,
 ) -> Result<()> {
