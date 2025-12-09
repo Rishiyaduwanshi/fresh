@@ -501,6 +501,16 @@ function getNestedValue(obj: Record<string, unknown>, path: string): unknown {
 }
 
 /**
+ * Update a config value in both workingConfig and userConfig
+ * This ensures changes are tracked for display and saved correctly
+ */
+function updateConfigValue(path: string, value: unknown): void {
+  setNestedValue(state.workingConfig, path, value);
+  setNestedValue(state.userConfig, path, value);
+  state.hasChanges = true;
+}
+
+/**
  * Set a nested value in an object using a path (supports array indices)
  */
 function setNestedValue(obj: Record<string, unknown>, path: string, value: unknown): void {
@@ -1321,8 +1331,7 @@ function editBooleanField(field: ConfigField): void {
   const currentValue = field.value as boolean;
   const newValue = !currentValue;
 
-  setNestedValue(state.workingConfig, field.path, newValue);
-  state.hasChanges = !deepEqual(state.workingConfig, state.originalConfig);
+  updateConfigValue(field.path, newValue);
   updateDisplay();
 
   editor.setStatus(`${field.name}: ${newValue}`);
@@ -1431,8 +1440,7 @@ globalThis.onConfigEnumPromptConfirmed = function(args: {
     // Validate against options
     const options = field.schema.enumOptions || [];
     if (options.includes(args.input)) {
-      setNestedValue(state.workingConfig, path, args.input);
-      state.hasChanges = !deepEqual(state.workingConfig, state.originalConfig);
+      updateConfigValue(path, args.input);
       updateDisplay();
       editor.setStatus(`${field.name}: ${args.input}`);
     } else {
@@ -1473,8 +1481,7 @@ globalThis.onConfigNumberPromptConfirmed = function(args: {
       return true;
     }
 
-    setNestedValue(state.workingConfig, path, num);
-    state.hasChanges = !deepEqual(state.workingConfig, state.originalConfig);
+    updateConfigValue(path, num);
     updateDisplay();
     editor.setStatus(`${field.name}: ${num}`);
   }
@@ -1496,8 +1503,7 @@ globalThis.onConfigStringPromptConfirmed = function(args: {
   const field = state.visibleFields.find(f => f.path === path);
 
   if (field) {
-    setNestedValue(state.workingConfig, path, args.input);
-    state.hasChanges = !deepEqual(state.workingConfig, state.originalConfig);
+    updateConfigValue(path, args.input);
     updateDisplay();
     editor.setStatus(`${field.name}: "${args.input}"`);
   }
@@ -1521,8 +1527,7 @@ globalThis.onConfigJsonPromptConfirmed = function(args: {
   if (field && args.input) {
     try {
       const parsed = JSON.parse(args.input);
-      setNestedValue(state.workingConfig, path, parsed);
-      state.hasChanges = !deepEqual(state.workingConfig, state.originalConfig);
+      updateConfigValue(path, parsed);
       updateDisplay();
       editor.setStatus(`${field.name}: ${JSON.stringify(parsed)}`);
     } catch (e) {
@@ -1530,8 +1535,7 @@ globalThis.onConfigJsonPromptConfirmed = function(args: {
     }
   } else if (field && !args.input) {
     // Empty input - set to null
-    setNestedValue(state.workingConfig, path, null);
-    state.hasChanges = !deepEqual(state.workingConfig, state.originalConfig);
+    updateConfigValue(path, null);
     updateDisplay();
     editor.setStatus(`${field.name}: null`);
   }
