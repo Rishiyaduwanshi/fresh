@@ -458,6 +458,7 @@ pub struct LspServerConfig {
     pub command: String,
 
     /// Arguments to pass to the server
+    #[serde(default)]
     pub args: Vec<String>,
 
     /// Whether the server is enabled
