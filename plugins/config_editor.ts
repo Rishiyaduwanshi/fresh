@@ -789,11 +789,51 @@ function loadConfig(): { merged: Record<string, unknown>; user: Record<string, u
 }
 
 /**
+ * Create a timestamped backup of a file
+ * Returns the backup path on success
+ * Throws on failure if the file exists
+ */
+async function createBackup(filePath: string): Promise<string | null> {
+  // Check if the file exists first
+  let existingContent: string;
+  try {
+    existingContent = await editor.readFile(filePath);
+  } catch {
+    // File doesn't exist, nothing to backup
+    return null;
+  }
+
+  if (!existingContent) {
+    // Empty file, nothing to backup
+    return null;
+  }
+
+  // Create timestamp: YYYY-MM-DD_HH-MM-SS
+  const now = new Date();
+  const timestamp = now.toISOString()
+    .replace(/T/, '_')
+    .replace(/:/g, '-')
+    .replace(/\..+/, '');
+
+  // Create backup filename: config.json -> config.json.backup.2025-01-15_14-30-45
+  const backupPath = `${filePath}.backup.${timestamp}`;
+  await editor.writeFile(backupPath, existingContent);
+  return backupPath;
+}
+
+/**
  * Save config to file
  * Only saves the userConfig (sparse - only user-customized values)
+ * Creates a timestamped backup of the existing file first
  */
 async function saveConfig(): Promise<boolean> {
   try {
+    // Create backup of existing config before overwriting
+    const backupPath = await createBackup(state.configPath);
+    if (backupPath) {
+      editor.debug(`Created backup: ${backupPath}`);
+    }
+
     const content = JSON.stringify(state.userConfig, null, 2);
     await editor.writeFile(state.configPath, content);
     state.originalConfig = deepClone(state.userConfig);
@@ -802,7 +842,8 @@ async function saveConfig(): Promise<boolean> {
     editor.reloadConfig();
     return true;
   } catch (e) {
-    editor.setStatus(`Failed to save: ${e}`);
+    const err = e instanceof Error ? e : new Error(String(e));
+    editor.setStatus(`Failed to save: ${err.message}`);
     return false;
   }
 }
