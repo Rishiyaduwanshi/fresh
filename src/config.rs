@@ -603,6 +603,18 @@ impl Config {
             },
         );
 
+        languages.insert(
+            "csharp".to_string(),
+            LanguageConfig {
+                extensions: vec!["cs".to_string()],
+                grammar: "c_sharp".to_string(),
+                comment_prefix: Some("//".to_string()),
+                auto_indent: true,
+                highlighter: HighlighterPreference::Auto,
+                textmate_grammar: None,
+            },
+        );
+
         languages
     }
 
@@ -725,6 +737,19 @@ impl Config {
             LspServerConfig {
                 command: "vscode-json-languageserver".to_string(),
                 args: vec!["--stdio".to_string()],
+                enabled: true,
+                auto_start: false,
+                process_limits: crate::services::process_limits::ProcessLimits::default(),
+                initialization_options: None,
+            },
+        );
+
+        // csharp-language-server (installed via dotnet tool install -g csharp-ls)
+        lsp.insert(
+            "csharp".to_string(),
+            LspServerConfig {
+                command: "csharp-ls".to_string(),
+                args: vec![],
                 enabled: true,
                 auto_start: false,
                 process_limits: crate::services::process_limits::ProcessLimits::default(),
