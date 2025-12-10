@@ -26,6 +26,7 @@ local-artifacts-jobs = ["./musl-builds"]
 # A GitHub repo to push Homebrew formulas to
 tap = "sinelaw/homebrew-fresh"
 # Publish jobs to run in CI
-publish-jobs = ["homebrew", "npm"]
+# Note: Using custom npm-publish job instead of built-in "npm" for OIDC trusted publishing
+publish-jobs = ["homebrew", "./npm-publish"]
 # Post-announce jobs to run in CI
 post-announce-jobs = ["./aur-publish", "./cargo-publish"]
