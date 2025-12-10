@@ -61,19 +61,23 @@ yay -S fresh-editor
 
 ### Debian/Ubuntu (.deb)
 
-Download the `.deb` file from the [releases page](https://github.com/sinelaw/fresh/releases) and install:
+Download and install the latest release:
 
 ```bash
-sudo dpkg -i fresh-editor_*.deb
+curl -sL $(curl -s https://api.github.com/repos/sinelaw/fresh/releases/latest | grep "browser_download_url.*\.deb" | cut -d '"' -f 4) -o fresh-editor.deb && sudo dpkg -i fresh-editor.deb
 ```
+
+Or download the `.deb` file manually from the [releases page](https://github.com/sinelaw/fresh/releases).
 
 ### Fedora/RHEL/openSUSE (.rpm)
 
-Download the `.rpm` file from the [releases page](https://github.com/sinelaw/fresh/releases) and install:
+Download and install the latest release:
 
 ```bash
-sudo rpm -i fresh-editor-*.rpm
+curl -sL $(curl -s https://api.github.com/repos/sinelaw/fresh/releases/latest | grep "browser_download_url.*\.rpm" | cut -d '"' -f 4) -o fresh-editor.rpm && sudo rpm -i fresh-editor.rpm
 ```
+
+Or download the `.rpm` file manually from the [releases page](https://github.com/sinelaw/fresh/releases).
 
 ### Pre-built binaries
 
