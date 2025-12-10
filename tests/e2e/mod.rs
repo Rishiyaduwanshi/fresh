@@ -26,6 +26,7 @@ pub mod merge_conflict;
 pub mod mouse;
 pub mod movement;
 pub mod multicursor;
+pub mod open_folder;
 pub mod plugin;
 pub mod position_history;
 pub mod position_history_bugs;
