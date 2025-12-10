@@ -436,7 +436,7 @@ fn test_terminal_resize() {
 
 /// Test that buffer content is synced when exiting terminal mode
 #[test]
-#[cfg(not(windows))] // Uses Unix shell commands (echo with single quotes)
+#[cfg_attr(target_os = "windows", ignore)] // Uses Unix shell commands (echo with single quotes)
 fn test_terminal_buffer_sync_on_exit() {
     let mut harness = harness_or_return!(80, 24);
 
@@ -720,7 +720,7 @@ fn test_bug_keybindings_work_in_readonly_mode() {
 /// tmux testing. The harness may not fully replicate the real UI render path.
 /// Manual testing showed the view stays stuck at the scrolled position.
 #[test]
-#[cfg(not(windows))] // Uses Unix shell commands (seq, for loop, echo)
+#[cfg_attr(target_os = "windows", ignore)] // Uses Unix shell commands (seq, for loop, echo)
 fn test_bug_view_scrolls_to_cursor_on_resume() {
     let mut harness = harness_or_return!(80, 24);
 
