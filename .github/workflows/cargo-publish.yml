@@ -1,19 +1,14 @@
-# Publish to crates.io after a release is created.
-# Called by cargo-dist as a post-announce job.
+# Publish to crates.io after a release is created
+
 name: Publish to crates.io
 
 on:
   workflow_call:
-    inputs:
-      plan:
-        required: true
-        type: string
-  workflow_dispatch:  # Manual trigger for testing
+  workflow_dispatch:
 
 jobs:
   publish-crates-io:
     runs-on: ubuntu-latest
-    if: ${{ !fromJson(inputs.plan).announcement_is_prerelease }}
     steps:
       - uses: actions/checkout@v4
 

@@ -1,5 +1,5 @@
-# Custom npm publish job with OIDC trusted publishing
-# This replaces the built-in cargo-dist npm job to support provenance attestations
+# Publish npm package with OIDC trusted publishing for provenance attestations
+# No NPM_TOKEN needed - uses GitHub Actions OIDC identity
 
 name: npm-publish
 
@@ -12,11 +12,8 @@ on:
         type: string
   workflow_call:
     inputs:
-      plan:
-        required: false
-        type: string
       version:
-        required: false
+        required: true
         type: string
 
 jobs:
@@ -26,52 +23,42 @@ jobs:
       contents: read
       id-token: write
     env:
-      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      PLAN: ${{ inputs.plan }}
       VERSION: ${{ inputs.version }}
-    if: ${{ inputs.version || !fromJson(inputs.plan).announcement_is_prerelease || fromJson(inputs.plan).publish_prereleases }}
     steps:
-      # Download from artifacts when called from release workflow
-      - name: Fetch npm packages from artifacts
-        if: ${{ inputs.plan }}
-        uses: actions/download-artifact@v6
+      - name: Download npm package from artifacts
+        uses: actions/download-artifact@v4
         with:
-          pattern: artifacts-*
+          name: artifacts-npm-package
           path: npm/
-          merge-multiple: true
-      # Download from GitHub release when triggered manually
-      - name: Download npm package from release
-        if: ${{ !inputs.plan && inputs.version }}
+        continue-on-error: true
+
+      - name: Check if package exists
+        id: check
+        run: |
+          if [ -f "npm/fresh-editor-npm-package.tar.gz" ]; then
+            echo "found=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "found=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Download npm package from release (fallback)
+        if: steps.check.outputs.found != 'true'
         run: |
           mkdir -p npm
-          gh release download "v${VERSION}" --repo "${{ github.repository }}" --pattern "*-npm-package.tar.gz" --dir npm/
-      - uses: actions/setup-node@v6
+          curl -fsSL "https://github.com/${{ github.repository }}/releases/download/v${VERSION}/fresh-editor-npm-package.tar.gz" -o npm/fresh-editor-npm-package.tar.gz
+
+      - uses: actions/setup-node@v4
         with:
           node-version: '24.x'
           registry-url: 'https://registry.npmjs.org'
+
       - name: Update npm
         run: npm install -g npm@latest
-      - name: Publish to npm with provenance
+
+      - name: Publish to npm with provenance (OIDC)
         env:
           NPM_CONFIG_PROVENANCE: true
         run: |
-          echo "DEBUG: PLAN='$PLAN'"
-          echo "DEBUG: VERSION='$VERSION'"
-          echo "DEBUG: Contents of npm/:"
-          ls -la npm/ || echo "DEBUG: npm/ directory does not exist"
-          if [ -n "$PLAN" ]; then
-            echo "DEBUG: Taking PLAN branch"
-            # Called from release workflow - use plan to find packages
-            for release in $(echo "$PLAN" | jq --compact-output '.releases[] | select([.artifacts[] | endswith("-npm-package.tar.gz")] | any)'); do
-              pkg=$(echo "$release" | jq '.artifacts[] | select(endswith("-npm-package.tar.gz"))' --raw-output)
-              echo "DEBUG: Publishing ./npm/${pkg}"
-              npm publish --access public --provenance "./npm/${pkg}"
-            done
-          else
-            echo "DEBUG: Taking else branch (manual trigger)"
-            # Manual trigger - publish all npm packages found
-            for pkg in ./npm/*-npm-package.tar.gz; do
-              echo "DEBUG: Publishing $pkg"
-              npm publish --access public --provenance "$pkg"
-            done
-          fi
+          echo "Publishing npm package for version ${VERSION}"
+          ls -la npm/
+          npm publish --access public --provenance npm/fresh-editor-npm-package.tar.gz

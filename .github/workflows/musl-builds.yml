@@ -1,17 +1,11 @@
 # Musl static builds without plugins support.
 # These builds use --no-default-features to disable the plugins feature,
 # which requires dynamic linking that musl doesn't support.
-# Kept outside the cargo-dist managed release.yml so it won't be overwritten.
+
 name: Musl Builds
 
 on:
-  # Allow dist to call this as a reusable workflow during release.
   workflow_call:
-    inputs:
-      plan:
-        required: true
-        type: string
-  # Manual runs for debugging.
   workflow_dispatch:
 
 jobs:
@@ -26,7 +20,6 @@ jobs:
             runner: ubuntu-22.04
     runs-on: ${{ matrix.runner }}
     env:
-      PLAN: ${{ inputs.plan }}
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - uses: actions/checkout@v4
@@ -65,19 +58,14 @@ jobs:
 
       - name: Create archive
         run: |
-          # cargo-dist expects tarballs with contents nested under a root dir
           ARCHIVE_NAME="fresh-editor-no-plugins-${{ matrix.target }}"
           mkdir -p "${ARCHIVE_NAME}"
           cp target/${{ matrix.target }}/release/fresh "${ARCHIVE_NAME}/"
           cp README.md LICENSE "${ARCHIVE_NAME}/" 2>/dev/null || true
 
-          # Create tarball (cargo-dist format: nested under root dir with same name)
           tar -czvf "${ARCHIVE_NAME}.tar.gz" "${ARCHIVE_NAME}"
-
-          # Create checksum
           sha256sum "${ARCHIVE_NAME}.tar.gz" > "${ARCHIVE_NAME}.tar.gz.sha256"
 
-          # Show what we built
           ls -la "${ARCHIVE_NAME}.tar.gz"*
 
       - name: Upload artifacts

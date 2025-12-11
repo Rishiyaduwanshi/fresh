@@ -1,11 +1,11 @@
-# Publish to AUR after a release is created.
-# Called by cargo-dist as a post-announce job.
+# Publish to AUR after a release is created
+
 name: Publish AUR Package
 
 on:
   workflow_call:
     inputs:
-      plan:
+      version:
         required: true
         type: string
   workflow_dispatch:
@@ -18,25 +18,15 @@ on:
 jobs:
   publish-aur:
     runs-on: ubuntu-latest
-    if: ${{ inputs.version || !fromJson(inputs.plan).announcement_is_prerelease }}
+    env:
+      VERSION: ${{ inputs.version }}
     steps:
       - uses: actions/checkout@v4
-
-      - name: Extract version
-        id: version
-        run: |
-          # Use manual input if provided, otherwise extract from plan
-          if [ -n "${{ inputs.version }}" ]; then
-            VERSION="${{ inputs.version }}"
-          else
-            VERSION=$(echo '${{ inputs.plan }}' | jq -r '.announcement_tag' | sed 's/^v//')
-          fi
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
       - name: Download tarball and compute checksum
         id: checksum
         run: |
-          URL="https://github.com/sinelaw/fresh/releases/download/v${{ steps.version.outputs.version }}/fresh-editor-x86_64-unknown-linux-gnu.tar.xz"
+          URL="https://github.com/sinelaw/fresh/releases/download/v${VERSION}/fresh-editor-x86_64-unknown-linux-gnu.tar.xz"
           echo "Downloading $URL"
           curl -fsSL "$URL" -o tarball.tar.xz
           SHA256=$(sha256sum tarball.tar.xz | cut -d' ' -f1)
@@ -47,7 +37,7 @@ jobs:
         run: |
           git clone https://aur.archlinux.org/fresh-editor.git aur-repo
           cd aur-repo
-          sed -i "s/^pkgver=.*/pkgver=${{ steps.version.outputs.version }}/" PKGBUILD
+          sed -i "s/^pkgver=.*/pkgver=${VERSION}/" PKGBUILD
           sed -i "s/^pkgrel=.*/pkgrel=1/" PKGBUILD
           # Replace sha256sums array using awk (handles both single and multi-line formats safely)
           awk -v sha="${{ steps.checksum.outputs.sha256 }}" '
@@ -68,5 +58,5 @@ jobs:
           commit_username: ${{ secrets.AUR_USERNAME }}
           commit_email: ${{ secrets.AUR_EMAIL }}
           ssh_private_key: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
-          commit_message: "Update to ${{ steps.version.outputs.version }}"
+          commit_message: "Update to ${VERSION}"
           ssh_keyscan_types: ed25519
