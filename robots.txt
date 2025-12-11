@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://noamraph.github.io/fresh/sitemap.xml
