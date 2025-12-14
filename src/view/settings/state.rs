@@ -353,7 +353,12 @@ impl SettingsState {
             self.selected_category = result.page_index;
             self.selected_item = result.item_index;
             self.category_focus = false;
-            self.scroll_panel = ScrollablePanel::new(); // Reset scroll when jumping to new category
+            // Reset scroll offset but preserve viewport for ensure_visible
+            self.scroll_panel.scroll.offset = 0;
+            // Update content height for the new category's items
+            if let Some(page) = self.pages.get(self.selected_category) {
+                self.scroll_panel.update_content_height(&page.items);
+            }
             self.sub_focus = None;
             self.ensure_visible();
             self.cancel_search();
