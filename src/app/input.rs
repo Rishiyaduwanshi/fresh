@@ -3972,6 +3972,22 @@ impl Editor {
             return Ok(false);
         };
 
+        // Check if a dropdown is open and click is outside of it
+        // If so, cancel the dropdown and consume the click
+        if let Some(ref mut state) = self.settings_state {
+            if state.is_dropdown_open() {
+                let is_click_on_open_dropdown = matches!(
+                    hit,
+                    SettingsHit::ControlDropdown(idx) if idx == state.selected_item
+                );
+                if !is_click_on_open_dropdown {
+                    // Click outside dropdown - cancel and restore original value
+                    state.dropdown_cancel();
+                    return Ok(true);
+                }
+            }
+        }
+
         match hit {
             SettingsHit::Outside => {
                 // Click outside modal - close settings

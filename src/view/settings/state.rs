@@ -707,17 +707,17 @@ impl SettingsState {
     pub fn dropdown_confirm(&mut self) {
         if let Some(item) = self.current_item_mut() {
             if let SettingControl::Dropdown(ref mut d) = item.control {
-                d.open = false;
+                d.confirm();
             }
         }
         self.on_value_changed();
     }
 
-    /// Cancel dropdown (close without changing)
+    /// Cancel dropdown (restore original value and close)
     pub fn dropdown_cancel(&mut self) {
         if let Some(item) = self.current_item_mut() {
             if let SettingControl::Dropdown(ref mut d) = item.control {
-                d.open = false;
+                d.cancel();
             }
         }
     }

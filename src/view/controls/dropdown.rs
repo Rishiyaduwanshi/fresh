@@ -26,6 +26,8 @@ pub struct DropdownState {
     pub open: bool,
     /// Focus state
     pub focus: FocusState,
+    /// Original selection when dropdown opened (for cancel/restore)
+    original_selected: Option<usize>,
 }
 
 impl DropdownState {
@@ -38,6 +40,7 @@ impl DropdownState {
             label: label.into(),
             open: false,
             focus: FocusState::Normal,
+            original_selected: None,
         }
     }
 
@@ -55,6 +58,7 @@ impl DropdownState {
             label: label.into(),
             open: false,
             focus: FocusState::Normal,
+            original_selected: None,
         }
     }
 
@@ -98,8 +102,29 @@ impl DropdownState {
     /// Toggle the dropdown open/closed
     pub fn toggle_open(&mut self) {
         if self.focus != FocusState::Disabled {
+            if !self.open {
+                // Opening - save original selection for cancel
+                self.original_selected = Some(self.selected);
+            } else {
+                // Closing via toggle - clear original (treat as confirm)
+                self.original_selected = None;
+            }
             self.open = !self.open;
         }
+    }
+
+    /// Cancel the dropdown (restore original selection and close)
+    pub fn cancel(&mut self) {
+        if let Some(original) = self.original_selected.take() {
+            self.selected = original;
+        }
+        self.open = false;
+    }
+
+    /// Confirm the selection and close
+    pub fn confirm(&mut self) {
+        self.original_selected = None;
+        self.open = false;
     }
 
     /// Select the next option
@@ -124,6 +149,7 @@ impl DropdownState {
     pub fn select(&mut self, index: usize) {
         if self.focus != FocusState::Disabled && index < self.options.len() {
             self.selected = index;
+            self.original_selected = None;
             self.open = false;
         }
     }
