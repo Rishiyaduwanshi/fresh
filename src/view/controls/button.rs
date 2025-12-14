@@ -59,6 +59,8 @@ pub struct ButtonColors {
     pub pressed_bg: Color,
     /// Focused highlight color
     pub focused: Color,
+    /// Hovered highlight color
+    pub hovered: Color,
     /// Disabled color
     pub disabled: Color,
 }
@@ -70,6 +72,7 @@ impl Default for ButtonColors {
             border: Color::Gray,
             pressed_bg: Color::DarkGray,
             focused: Color::Cyan,
+            hovered: Color::Blue,
             disabled: Color::DarkGray,
         }
     }
@@ -83,6 +86,7 @@ impl ButtonColors {
             border: theme.line_number_fg,
             pressed_bg: theme.selection_bg,
             focused: theme.selection_bg,
+            hovered: theme.menu_hover_bg,
             disabled: theme.line_number_fg,
         }
     }
@@ -94,6 +98,7 @@ impl ButtonColors {
             border: Color::Cyan,
             pressed_bg: Color::LightCyan,
             focused: Color::Cyan,
+            hovered: Color::LightCyan,
             disabled: Color::DarkGray,
         }
     }
@@ -105,6 +110,7 @@ impl ButtonColors {
             border: Color::Red,
             pressed_bg: Color::LightRed,
             focused: Color::Red,
+            hovered: Color::LightRed,
             disabled: Color::DarkGray,
         }
     }
@@ -165,8 +171,8 @@ pub fn render_button(
             }
         }
         FocusState::Hovered => {
-            // Hover uses focused colors with slight distinction
-            (colors.focused, colors.focused, None)
+            // Hover uses dedicated hover color from theme
+            (colors.hovered, colors.hovered, None)
         }
         FocusState::Disabled => (colors.disabled, colors.disabled, None),
     };

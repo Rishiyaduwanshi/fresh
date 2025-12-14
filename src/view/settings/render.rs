@@ -163,10 +163,10 @@ fn render_categories(
                     .bg(theme.selection_bg)
             }
         } else if is_hovered {
-            // Hover highlight (lighter than selection)
+            // Hover highlight using menu hover colors
             Style::default()
-                .fg(theme.popup_text_fg)
-                .add_modifier(Modifier::UNDERLINED)
+                .fg(theme.menu_hover_fg)
+                .bg(theme.menu_hover_bg)
         } else {
             Style::default().fg(theme.popup_text_fg)
         };
@@ -330,8 +330,8 @@ fn render_setting_item(
         let bg_style = if is_selected {
             Style::default().bg(theme.current_line_bg)
         } else {
-            // Hover uses a lighter/different highlight
-            Style::default().bg(theme.selection_bg)
+            // Hover uses the menu hover background for consistency
+            Style::default().bg(theme.menu_hover_bg)
         };
         let highlight_height = if control_has_own_label {
             item.control.control_height()
