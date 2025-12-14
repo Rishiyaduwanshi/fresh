@@ -463,6 +463,45 @@ impl Editor {
                 }
             }
 
+            // Check if number editing is active
+            let number_editing = self
+                .settings_state
+                .as_ref()
+                .map_or(false, |s| s.is_number_editing());
+
+            if number_editing {
+                // Handle number input
+                match code {
+                    crossterm::event::KeyCode::Char(c)
+                        if c.is_ascii_digit() || c == '-' =>
+                    {
+                        if let Some(ref mut state) = self.settings_state {
+                            state.number_insert(c);
+                        }
+                        return Ok(());
+                    }
+                    crossterm::event::KeyCode::Backspace => {
+                        if let Some(ref mut state) = self.settings_state {
+                            state.number_backspace();
+                        }
+                        return Ok(());
+                    }
+                    crossterm::event::KeyCode::Enter => {
+                        if let Some(ref mut state) = self.settings_state {
+                            state.number_confirm();
+                        }
+                        return Ok(());
+                    }
+                    crossterm::event::KeyCode::Esc => {
+                        if let Some(ref mut state) = self.settings_state {
+                            state.number_cancel();
+                        }
+                        return Ok(());
+                    }
+                    _ => {}
+                }
+            }
+
             // Check if search is active
             let search_active = self
                 .settings_state

@@ -25,6 +25,10 @@ pub struct NumberInputState {
     pub label: String,
     /// Focus state
     pub focus: FocusState,
+    /// Whether currently editing the text value
+    pub editing: bool,
+    /// Text being edited (when editing=true)
+    pub edit_text: String,
 }
 
 impl NumberInputState {
@@ -37,6 +41,8 @@ impl NumberInputState {
             step: 1,
             label: label.into(),
             focus: FocusState::Normal,
+            editing: false,
+            edit_text: String::new(),
         }
     }
 
@@ -101,6 +107,59 @@ impl NumberInputState {
             v = v.min(max);
         }
         self.value = v;
+    }
+
+    /// Start editing mode
+    pub fn start_editing(&mut self) {
+        if self.focus == FocusState::Disabled {
+            return;
+        }
+        self.editing = true;
+        self.edit_text = self.value.to_string();
+    }
+
+    /// Cancel editing and restore original value
+    pub fn cancel_editing(&mut self) {
+        self.editing = false;
+        self.edit_text.clear();
+    }
+
+    /// Confirm editing and apply the new value
+    pub fn confirm_editing(&mut self) {
+        if self.editing {
+            if let Ok(new_value) = self.edit_text.parse::<i64>() {
+                self.set_value(new_value);
+            }
+            self.editing = false;
+            self.edit_text.clear();
+        }
+    }
+
+    /// Insert a character while editing (only digits and minus sign)
+    pub fn insert_char(&mut self, c: char) {
+        if !self.editing {
+            return;
+        }
+        // Allow digits and minus sign at the start
+        if c.is_ascii_digit() || (c == '-' && self.edit_text.is_empty()) {
+            self.edit_text.push(c);
+        }
+    }
+
+    /// Backspace while editing
+    pub fn backspace(&mut self) {
+        if self.editing {
+            self.edit_text.pop();
+        }
+    }
+
+    /// Get the display text (edit text when editing, value otherwise)
+    pub fn display_text(&self) -> String {
+        if self.editing {
+            self.edit_text.clone()
+        } else {
+            self.value.to_string()
+        }
     }
 }
 
@@ -219,8 +278,13 @@ pub fn render_number_input(
     };
 
     // Format: "Label: [ value ] [-] [+]"
-    let value_str = state.value.to_string();
-    let value_padded = format!("{:^5}", value_str); // Center in 5 chars
+    let value_str = state.display_text();
+    let value_padded = if state.editing {
+        // Show edit text with cursor indicator
+        format!("{}_", value_str)
+    } else {
+        format!("{:^5}", value_str) // Center in 5 chars
+    };
 
     let line = Line::from(vec![
         Span::styled(&state.label, Style::default().fg(label_color)),
@@ -349,5 +413,125 @@ mod tests {
             assert!(layout.is_increment(inc_x, 0));
             assert!(!layout.is_decrement(inc_x, 0));
         });
+    }
+
+    #[test]
+    fn test_number_input_start_editing() {
+        let mut state = NumberInputState::new(42, "Value");
+        assert!(!state.editing);
+        assert!(state.edit_text.is_empty());
+
+        state.start_editing();
+        assert!(state.editing);
+        assert_eq!(state.edit_text, "42");
+    }
+
+    #[test]
+    fn test_number_input_cancel_editing() {
+        let mut state = NumberInputState::new(42, "Value");
+        state.start_editing();
+        state.insert_char('1');
+        state.insert_char('0');
+        state.insert_char('0');
+        assert_eq!(state.edit_text, "42100");
+
+        state.cancel_editing();
+        assert!(!state.editing);
+        assert!(state.edit_text.is_empty());
+        assert_eq!(state.value, 42); // Original value unchanged
+    }
+
+    #[test]
+    fn test_number_input_confirm_editing() {
+        let mut state = NumberInputState::new(42, "Value");
+        state.start_editing();
+        state.edit_text = "100".to_string();
+
+        state.confirm_editing();
+        assert!(!state.editing);
+        assert!(state.edit_text.is_empty());
+        assert_eq!(state.value, 100); // New value applied
+    }
+
+    #[test]
+    fn test_number_input_confirm_invalid_resets() {
+        let mut state = NumberInputState::new(42, "Value");
+        state.start_editing();
+        state.edit_text = "abc".to_string(); // Invalid number
+
+        state.confirm_editing();
+        assert!(!state.editing);
+        assert_eq!(state.value, 42); // Original value unchanged
+    }
+
+    #[test]
+    fn test_number_input_insert_char() {
+        let mut state = NumberInputState::new(0, "Value");
+        state.start_editing();
+        state.edit_text.clear();
+
+        // Can insert digits
+        state.insert_char('1');
+        state.insert_char('2');
+        state.insert_char('3');
+        assert_eq!(state.edit_text, "123");
+
+        // Can insert minus at start only
+        let mut state2 = NumberInputState::new(0, "Value");
+        state2.start_editing();
+        state2.edit_text.clear();
+        state2.insert_char('-');
+        assert_eq!(state2.edit_text, "-");
+        state2.insert_char('-'); // Should be ignored (not at start)
+        assert_eq!(state2.edit_text, "-");
+        state2.insert_char('5');
+        assert_eq!(state2.edit_text, "-5");
+    }
+
+    #[test]
+    fn test_number_input_backspace() {
+        let mut state = NumberInputState::new(123, "Value");
+        state.start_editing();
+        assert_eq!(state.edit_text, "123");
+
+        state.backspace();
+        assert_eq!(state.edit_text, "12");
+        state.backspace();
+        assert_eq!(state.edit_text, "1");
+        state.backspace();
+        assert_eq!(state.edit_text, "");
+        state.backspace(); // No crash on empty
+        assert_eq!(state.edit_text, "");
+    }
+
+    #[test]
+    fn test_number_input_display_text() {
+        let mut state = NumberInputState::new(42, "Value");
+
+        // Not editing - shows value
+        assert_eq!(state.display_text(), "42");
+
+        // Editing - shows edit text
+        state.start_editing();
+        assert_eq!(state.display_text(), "42");
+        state.insert_char('0');
+        assert_eq!(state.display_text(), "420");
+    }
+
+    #[test]
+    fn test_number_input_editing_respects_minmax() {
+        let mut state = NumberInputState::new(50, "Value").with_min(0).with_max(100);
+        state.start_editing();
+        state.edit_text = "200".to_string();
+
+        state.confirm_editing();
+        assert_eq!(state.value, 100); // Clamped to max
+    }
+
+    #[test]
+    fn test_number_input_disabled_no_editing() {
+        let mut state = NumberInputState::new(42, "Value").with_focus(FocusState::Disabled);
+        state.start_editing();
+        assert!(!state.editing); // Should not enter editing mode
     }
 }

@@ -727,6 +727,65 @@ impl SettingsState {
         }
     }
 
+    // =========== Number editing methods ===========
+
+    /// Check if current item is a number input being edited
+    pub fn is_number_editing(&self) -> bool {
+        self.current_item().map_or(false, |item| {
+            if let SettingControl::Number(ref n) = item.control {
+                n.editing
+            } else {
+                false
+            }
+        })
+    }
+
+    /// Start number editing mode
+    pub fn start_number_editing(&mut self) {
+        if let Some(item) = self.current_item_mut() {
+            if let SettingControl::Number(ref mut n) = item.control {
+                n.start_editing();
+            }
+        }
+    }
+
+    /// Insert a character into number input
+    pub fn number_insert(&mut self, c: char) {
+        if let Some(item) = self.current_item_mut() {
+            if let SettingControl::Number(ref mut n) = item.control {
+                n.insert_char(c);
+            }
+        }
+    }
+
+    /// Backspace in number input
+    pub fn number_backspace(&mut self) {
+        if let Some(item) = self.current_item_mut() {
+            if let SettingControl::Number(ref mut n) = item.control {
+                n.backspace();
+            }
+        }
+    }
+
+    /// Confirm number editing
+    pub fn number_confirm(&mut self) {
+        if let Some(item) = self.current_item_mut() {
+            if let SettingControl::Number(ref mut n) = item.control {
+                n.confirm_editing();
+            }
+        }
+        self.on_value_changed();
+    }
+
+    /// Cancel number editing
+    pub fn number_cancel(&mut self) {
+        if let Some(item) = self.current_item_mut() {
+            if let SettingControl::Number(ref mut n) = item.control {
+                n.cancel_editing();
+            }
+        }
+    }
+
     /// Get list of pending changes for display
     pub fn get_change_descriptions(&self) -> Vec<String> {
         self.pending_changes
@@ -870,5 +929,216 @@ mod tests {
 
         state.hide();
         assert!(!state.visible);
+    }
+
+    // Schema with dropdown (enum) and number controls for testing
+    const TEST_SCHEMA_CONTROLS: &str = r#"
+{
+  "type": "object",
+  "properties": {
+    "theme": {
+      "type": "string",
+      "enum": ["dark", "light", "high-contrast"],
+      "default": "dark"
+    },
+    "tab_size": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 8,
+      "default": 4
+    },
+    "line_numbers": {
+      "type": "boolean",
+      "default": true
+    }
+  },
+  "$defs": {}
+}
+"#;
+
+    #[test]
+    fn test_dropdown_toggle() {
+        let config = test_config();
+        let mut state = SettingsState::new(TEST_SCHEMA_CONTROLS, &config).unwrap();
+        state.show();
+        state.toggle_focus(); // Move to settings
+
+        // First item should be theme (dropdown)
+        assert!(!state.is_dropdown_open());
+
+        state.dropdown_toggle();
+        assert!(state.is_dropdown_open());
+
+        state.dropdown_toggle();
+        assert!(!state.is_dropdown_open());
+    }
+
+    #[test]
+    fn test_dropdown_cancel_restores() {
+        let config = test_config();
+        let mut state = SettingsState::new(TEST_SCHEMA_CONTROLS, &config).unwrap();
+        state.show();
+        state.toggle_focus();
+
+        // Open dropdown
+        state.dropdown_toggle();
+        assert!(state.is_dropdown_open());
+
+        // Get initial selection
+        let initial = state.current_item().and_then(|item| {
+            if let SettingControl::Dropdown(ref d) = item.control {
+                Some(d.selected)
+            } else {
+                None
+            }
+        });
+
+        // Change selection
+        state.dropdown_next();
+        let after_change = state.current_item().and_then(|item| {
+            if let SettingControl::Dropdown(ref d) = item.control {
+                Some(d.selected)
+            } else {
+                None
+            }
+        });
+        assert_ne!(initial, after_change);
+
+        // Cancel - should restore
+        state.dropdown_cancel();
+        assert!(!state.is_dropdown_open());
+
+        let after_cancel = state.current_item().and_then(|item| {
+            if let SettingControl::Dropdown(ref d) = item.control {
+                Some(d.selected)
+            } else {
+                None
+            }
+        });
+        assert_eq!(initial, after_cancel);
+    }
+
+    #[test]
+    fn test_dropdown_confirm_keeps_selection() {
+        let config = test_config();
+        let mut state = SettingsState::new(TEST_SCHEMA_CONTROLS, &config).unwrap();
+        state.show();
+        state.toggle_focus();
+
+        // Open dropdown
+        state.dropdown_toggle();
+
+        // Change selection
+        state.dropdown_next();
+        let after_change = state.current_item().and_then(|item| {
+            if let SettingControl::Dropdown(ref d) = item.control {
+                Some(d.selected)
+            } else {
+                None
+            }
+        });
+
+        // Confirm - should keep new selection
+        state.dropdown_confirm();
+        assert!(!state.is_dropdown_open());
+
+        let after_confirm = state.current_item().and_then(|item| {
+            if let SettingControl::Dropdown(ref d) = item.control {
+                Some(d.selected)
+            } else {
+                None
+            }
+        });
+        assert_eq!(after_change, after_confirm);
+    }
+
+    #[test]
+    fn test_number_editing() {
+        let config = test_config();
+        let mut state = SettingsState::new(TEST_SCHEMA_CONTROLS, &config).unwrap();
+        state.show();
+        state.toggle_focus();
+
+        // Navigate to tab_size (second item)
+        state.select_next();
+
+        // Should not be editing yet
+        assert!(!state.is_number_editing());
+
+        // Start editing
+        state.start_number_editing();
+        assert!(state.is_number_editing());
+
+        // Insert characters
+        state.number_insert('8');
+
+        // Confirm
+        state.number_confirm();
+        assert!(!state.is_number_editing());
+    }
+
+    #[test]
+    fn test_number_cancel_editing() {
+        let config = test_config();
+        let mut state = SettingsState::new(TEST_SCHEMA_CONTROLS, &config).unwrap();
+        state.show();
+        state.toggle_focus();
+
+        // Navigate to tab_size
+        state.select_next();
+
+        // Get initial value
+        let initial_value = state.current_item().and_then(|item| {
+            if let SettingControl::Number(ref n) = item.control {
+                Some(n.value)
+            } else {
+                None
+            }
+        });
+
+        // Start editing and make changes
+        state.start_number_editing();
+        state.number_backspace();
+        state.number_insert('9');
+        state.number_insert('9');
+
+        // Cancel
+        state.number_cancel();
+        assert!(!state.is_number_editing());
+
+        // Value should be unchanged (edit text was just cleared)
+        let after_cancel = state.current_item().and_then(|item| {
+            if let SettingControl::Number(ref n) = item.control {
+                Some(n.value)
+            } else {
+                None
+            }
+        });
+        assert_eq!(initial_value, after_cancel);
+    }
+
+    #[test]
+    fn test_number_backspace() {
+        let config = test_config();
+        let mut state = SettingsState::new(TEST_SCHEMA_CONTROLS, &config).unwrap();
+        state.show();
+        state.toggle_focus();
+        state.select_next();
+
+        state.start_number_editing();
+        state.number_backspace();
+
+        // Check edit text was modified
+        let edit_text = state.current_item().and_then(|item| {
+            if let SettingControl::Number(ref n) = item.control {
+                Some(n.edit_text.clone())
+            } else {
+                None
+            }
+        });
+        // Original "4" should have last char removed, leaving ""
+        assert_eq!(edit_text, Some(String::new()));
+
+        state.number_cancel();
     }
 }

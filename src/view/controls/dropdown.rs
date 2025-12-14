@@ -439,4 +439,71 @@ mod tests {
         state.select_next();
         assert_eq!(state.selected, 0);
     }
+
+    #[test]
+    fn test_dropdown_cancel_restores_original() {
+        let mut state = DropdownState::new(
+            vec!["A".to_string(), "B".to_string(), "C".to_string()],
+            "Test",
+        )
+        .with_selected(1);
+
+        // Open dropdown - should save original
+        state.toggle_open();
+        assert!(state.open);
+        assert_eq!(state.selected, 1);
+
+        // Change selection while open
+        state.select_next();
+        assert_eq!(state.selected, 2);
+
+        // Cancel - should restore original
+        state.cancel();
+        assert!(!state.open);
+        assert_eq!(state.selected, 1);
+    }
+
+    #[test]
+    fn test_dropdown_confirm_commits_selection() {
+        let mut state = DropdownState::new(
+            vec!["A".to_string(), "B".to_string(), "C".to_string()],
+            "Test",
+        )
+        .with_selected(0);
+
+        // Open dropdown
+        state.toggle_open();
+        assert!(state.open);
+
+        // Change selection
+        state.select_next();
+        assert_eq!(state.selected, 1);
+
+        // Confirm - should keep new selection
+        state.confirm();
+        assert!(!state.open);
+        assert_eq!(state.selected, 1);
+    }
+
+    #[test]
+    fn test_dropdown_toggle_close_confirms() {
+        let mut state = DropdownState::new(
+            vec!["A".to_string(), "B".to_string(), "C".to_string()],
+            "Test",
+        )
+        .with_selected(0);
+
+        // Open dropdown
+        state.toggle_open();
+        assert!(state.open);
+
+        // Change selection
+        state.select_next();
+        assert_eq!(state.selected, 1);
+
+        // Toggle close - should confirm (not restore)
+        state.toggle_open();
+        assert!(!state.open);
+        assert_eq!(state.selected, 1);
+    }
 }

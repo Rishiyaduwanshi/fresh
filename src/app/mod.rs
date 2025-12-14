@@ -1805,6 +1805,12 @@ impl Editor {
                     state.start_editing();
                 }
             }
+            Some("number") => {
+                // For Number controls: enter number editing mode
+                if let Some(ref mut state) = self.settings_state {
+                    state.start_number_editing();
+                }
+            }
             _ => {}
         }
     }
