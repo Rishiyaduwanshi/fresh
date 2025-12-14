@@ -430,10 +430,13 @@ impl SettingsState {
         old != self.scroll_panel.scroll.offset
     }
 
-    /// Start text editing mode for TextList controls
+    /// Start text editing mode for TextList, Text, or Map controls
     pub fn start_editing(&mut self) {
         if let Some(item) = self.current_item() {
-            if matches!(item.control, SettingControl::TextList(_)) {
+            if matches!(
+                item.control,
+                SettingControl::TextList(_) | SettingControl::Text(_) | SettingControl::Map(_)
+            ) {
                 self.editing_text = true;
             }
         }
@@ -444,89 +447,265 @@ impl SettingsState {
         self.editing_text = false;
     }
 
-    /// Check if the current item is a TextList
-    pub fn is_text_list(&self) -> bool {
+    /// Check if the current item is editable (TextList, Text, or Map)
+    pub fn is_editable_control(&self) -> bool {
         self.current_item().map_or(false, |item| {
-            matches!(item.control, SettingControl::TextList(_))
+            matches!(
+                item.control,
+                SettingControl::TextList(_) | SettingControl::Text(_) | SettingControl::Map(_)
+            )
         })
     }
 
-    /// Insert a character into the current TextList
+    /// Insert a character into the current editable control
     pub fn text_insert(&mut self, c: char) {
         if let Some(item) = self.current_item_mut() {
-            if let SettingControl::TextList(state) = &mut item.control {
-                state.insert(c);
+            match &mut item.control {
+                SettingControl::TextList(state) => state.insert(c),
+                SettingControl::Text(state) => {
+                    state.value.insert(state.cursor, c);
+                    state.cursor += c.len_utf8();
+                }
+                SettingControl::Map(state) => {
+                    state.new_key_text.insert(state.cursor, c);
+                    state.cursor += c.len_utf8();
+                }
+                _ => {}
             }
         }
     }
 
-    /// Backspace in the current TextList
+    /// Backspace in the current editable control
     pub fn text_backspace(&mut self) {
         if let Some(item) = self.current_item_mut() {
-            if let SettingControl::TextList(state) = &mut item.control {
-                state.backspace();
+            match &mut item.control {
+                SettingControl::TextList(state) => state.backspace(),
+                SettingControl::Text(state) => {
+                    if state.cursor > 0 {
+                        let mut char_start = state.cursor - 1;
+                        while char_start > 0 && !state.value.is_char_boundary(char_start) {
+                            char_start -= 1;
+                        }
+                        state.value.remove(char_start);
+                        state.cursor = char_start;
+                    }
+                }
+                SettingControl::Map(state) => {
+                    if state.cursor > 0 {
+                        let mut char_start = state.cursor - 1;
+                        while char_start > 0 && !state.new_key_text.is_char_boundary(char_start) {
+                            char_start -= 1;
+                        }
+                        state.new_key_text.remove(char_start);
+                        state.cursor = char_start;
+                    }
+                }
+                _ => {}
             }
         }
     }
 
-    /// Move cursor left in the current TextList
+    /// Move cursor left in the current editable control
     pub fn text_move_left(&mut self) {
         if let Some(item) = self.current_item_mut() {
-            if let SettingControl::TextList(state) = &mut item.control {
-                state.move_left();
+            match &mut item.control {
+                SettingControl::TextList(state) => state.move_left(),
+                SettingControl::Text(state) => {
+                    if state.cursor > 0 {
+                        let mut new_pos = state.cursor - 1;
+                        while new_pos > 0 && !state.value.is_char_boundary(new_pos) {
+                            new_pos -= 1;
+                        }
+                        state.cursor = new_pos;
+                    }
+                }
+                SettingControl::Map(state) => {
+                    if state.cursor > 0 {
+                        let mut new_pos = state.cursor - 1;
+                        while new_pos > 0 && !state.new_key_text.is_char_boundary(new_pos) {
+                            new_pos -= 1;
+                        }
+                        state.cursor = new_pos;
+                    }
+                }
+                _ => {}
             }
         }
     }
 
-    /// Move cursor right in the current TextList
+    /// Move cursor right in the current editable control
     pub fn text_move_right(&mut self) {
         if let Some(item) = self.current_item_mut() {
-            if let SettingControl::TextList(state) = &mut item.control {
-                state.move_right();
+            match &mut item.control {
+                SettingControl::TextList(state) => state.move_right(),
+                SettingControl::Text(state) => {
+                    if state.cursor < state.value.len() {
+                        let mut new_pos = state.cursor + 1;
+                        while new_pos < state.value.len() && !state.value.is_char_boundary(new_pos)
+                        {
+                            new_pos += 1;
+                        }
+                        state.cursor = new_pos;
+                    }
+                }
+                SettingControl::Map(state) => {
+                    if state.cursor < state.new_key_text.len() {
+                        let mut new_pos = state.cursor + 1;
+                        while new_pos < state.new_key_text.len()
+                            && !state.new_key_text.is_char_boundary(new_pos)
+                        {
+                            new_pos += 1;
+                        }
+                        state.cursor = new_pos;
+                    }
+                }
+                _ => {}
             }
         }
     }
 
-    /// Move focus to previous item in TextList
+    /// Move focus to previous item in TextList/Map
     pub fn text_focus_prev(&mut self) {
         if let Some(item) = self.current_item_mut() {
-            if let SettingControl::TextList(state) = &mut item.control {
-                state.focus_prev();
+            match &mut item.control {
+                SettingControl::TextList(state) => state.focus_prev(),
+                SettingControl::Map(state) => {
+                    // Move focus to previous entry (None = add-new field)
+                    match state.focused_entry {
+                        None if !state.entries.is_empty() => {
+                            state.focused_entry = Some(state.entries.len() - 1);
+                        }
+                        Some(0) => {
+                            state.focused_entry = None;
+                        }
+                        Some(idx) => {
+                            state.focused_entry = Some(idx - 1);
+                        }
+                        _ => {}
+                    }
+                }
+                _ => {}
             }
         }
     }
 
-    /// Move focus to next item in TextList
+    /// Move focus to next item in TextList/Map
     pub fn text_focus_next(&mut self) {
         if let Some(item) = self.current_item_mut() {
-            if let SettingControl::TextList(state) = &mut item.control {
-                state.focus_next();
+            match &mut item.control {
+                SettingControl::TextList(state) => state.focus_next(),
+                SettingControl::Map(state) => {
+                    // Move focus to next entry (None = add-new field)
+                    match state.focused_entry {
+                        None => {
+                            if !state.entries.is_empty() {
+                                state.focused_entry = Some(0);
+                            }
+                        }
+                        Some(idx) if idx + 1 < state.entries.len() => {
+                            state.focused_entry = Some(idx + 1);
+                        }
+                        Some(_) => {
+                            state.focused_entry = None;
+                        }
+                    }
+                }
+                _ => {}
             }
         }
     }
 
-    /// Add new item in TextList (from the new item field)
+    /// Add new item in TextList/Map (from the new item field)
     pub fn text_add_item(&mut self) {
         if let Some(item) = self.current_item_mut() {
-            if let SettingControl::TextList(state) = &mut item.control {
-                state.add_item();
+            match &mut item.control {
+                SettingControl::TextList(state) => state.add_item(),
+                SettingControl::Map(state) => state.add_entry_from_input(),
+                _ => {}
             }
         }
         // Record the change
         self.on_value_changed();
     }
 
-    /// Remove the currently focused item in TextList
+    /// Remove the currently focused item in TextList/Map
     pub fn text_remove_focused(&mut self) {
         if let Some(item) = self.current_item_mut() {
-            if let SettingControl::TextList(state) = &mut item.control {
-                if let Some(idx) = state.focused_item {
-                    state.remove_item(idx);
+            match &mut item.control {
+                SettingControl::TextList(state) => {
+                    if let Some(idx) = state.focused_item {
+                        state.remove_item(idx);
+                    }
                 }
+                SettingControl::Map(state) => {
+                    if let Some(idx) = state.focused_entry {
+                        state.remove_entry(idx);
+                    }
+                }
+                _ => {}
             }
         }
         // Record the change
         self.on_value_changed();
+    }
+
+    // =========== Dropdown methods ===========
+
+    /// Check if current item is a dropdown with menu open
+    pub fn is_dropdown_open(&self) -> bool {
+        self.current_item().map_or(false, |item| {
+            if let SettingControl::Dropdown(ref d) = item.control {
+                d.open
+            } else {
+                false
+            }
+        })
+    }
+
+    /// Toggle dropdown open/closed
+    pub fn dropdown_toggle(&mut self) {
+        if let Some(item) = self.current_item_mut() {
+            if let SettingControl::Dropdown(ref mut d) = item.control {
+                d.toggle_open();
+            }
+        }
+    }
+
+    /// Select previous option in dropdown
+    pub fn dropdown_prev(&mut self) {
+        if let Some(item) = self.current_item_mut() {
+            if let SettingControl::Dropdown(ref mut d) = item.control {
+                d.select_prev();
+            }
+        }
+    }
+
+    /// Select next option in dropdown
+    pub fn dropdown_next(&mut self) {
+        if let Some(item) = self.current_item_mut() {
+            if let SettingControl::Dropdown(ref mut d) = item.control {
+                d.select_next();
+            }
+        }
+    }
+
+    /// Confirm dropdown selection (close and record change)
+    pub fn dropdown_confirm(&mut self) {
+        if let Some(item) = self.current_item_mut() {
+            if let SettingControl::Dropdown(ref mut d) = item.control {
+                d.open = false;
+            }
+        }
+        self.on_value_changed();
+    }
+
+    /// Cancel dropdown (close without changing)
+    pub fn dropdown_cancel(&mut self) {
+        if let Some(item) = self.current_item_mut() {
+            if let SettingControl::Dropdown(ref mut d) = item.control {
+                d.open = false;
+            }
+        }
     }
 
     /// Get list of pending changes for display

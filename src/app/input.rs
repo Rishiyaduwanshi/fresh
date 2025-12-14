@@ -426,6 +426,43 @@ impl Editor {
                 }
             }
 
+            // Check if a dropdown is open
+            let dropdown_open = self
+                .settings_state
+                .as_ref()
+                .map_or(false, |s| s.is_dropdown_open());
+
+            if dropdown_open {
+                // Handle dropdown navigation
+                match code {
+                    crossterm::event::KeyCode::Up => {
+                        if let Some(ref mut state) = self.settings_state {
+                            state.dropdown_prev();
+                        }
+                        return Ok(());
+                    }
+                    crossterm::event::KeyCode::Down => {
+                        if let Some(ref mut state) = self.settings_state {
+                            state.dropdown_next();
+                        }
+                        return Ok(());
+                    }
+                    crossterm::event::KeyCode::Enter => {
+                        if let Some(ref mut state) = self.settings_state {
+                            state.dropdown_confirm();
+                        }
+                        return Ok(());
+                    }
+                    crossterm::event::KeyCode::Esc => {
+                        if let Some(ref mut state) = self.settings_state {
+                            state.dropdown_cancel();
+                        }
+                        return Ok(());
+                    }
+                    _ => {}
+                }
+            }
+
             // Check if search is active
             let search_active = self
                 .settings_state

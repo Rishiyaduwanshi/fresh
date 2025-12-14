@@ -1763,18 +1763,44 @@ impl Editor {
                 }
             }
             Some("dropdown") => {
-                // Cycle to next option on Enter
+                // Toggle dropdown open/closed, or confirm selection if open
+                if let Some(ref mut state) = self.settings_state {
+                    if state.is_dropdown_open() {
+                        state.dropdown_confirm();
+                    } else {
+                        state.dropdown_toggle();
+                    }
+                }
+            }
+            Some("textlist") => {
+                // Enter text editing mode for TextList controls
+                if let Some(ref mut state) = self.settings_state {
+                    state.start_editing();
+                }
+            }
+            Some("map") => {
+                // For Map controls: add new entry if on add-new row, or toggle expand if on entry
                 if let Some(ref mut state) = self.settings_state {
                     if let Some(item) = state.current_item_mut() {
-                        if let SettingControl::Dropdown(ref mut dropdown_state) = item.control {
-                            dropdown_state.select_next();
+                        if let SettingControl::Map(ref mut map_state) = item.control {
+                            if map_state.focused_entry.is_none() {
+                                // On add-new row: add the entry
+                                map_state.add_entry_from_input();
+                            } else if let Some(idx) = map_state.focused_entry {
+                                // On entry row: toggle expanded
+                                if map_state.expanded.contains(&idx) {
+                                    map_state.expanded.retain(|&i| i != idx);
+                                } else {
+                                    map_state.expanded.push(idx);
+                                }
+                            }
                         }
                     }
                     state.on_value_changed();
                 }
             }
-            Some("textlist") => {
-                // Enter text editing mode for TextList controls
+            Some("text") => {
+                // For Text controls: enter text editing mode
                 if let Some(ref mut state) = self.settings_state {
                     state.start_editing();
                 }
