@@ -968,6 +968,15 @@ pub fn get_all_commands() -> Vec<Command> {
             custom_contexts: vec![],
             source: CommandSource::Builtin,
         },
+        // Settings
+        Command {
+            name: "Open Settings".to_string(),
+            description: "Open the settings editor".to_string(),
+            action: Action::OpenSettings,
+            contexts: vec![],
+            custom_contexts: vec![],
+            source: CommandSource::Builtin,
+        },
         // Terminal commands
         Command {
             name: "Open Terminal".to_string(),

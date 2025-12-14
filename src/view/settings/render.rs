@@ -117,6 +117,16 @@ pub fn render_settings(
     // Render footer with buttons
     render_footer(frame, modal_area, state, theme, &mut layout);
 
+    // Render confirmation dialog if showing
+    if state.showing_confirm_dialog {
+        render_confirm_dialog(frame, modal_area, state, theme);
+    }
+
+    // Render help overlay if showing
+    if state.showing_help {
+        render_help_overlay(frame, modal_area, theme);
+    }
+
     layout
 }
 
@@ -586,6 +596,217 @@ fn build_highlighted_text(
     }
 
     Line::from(spans)
+}
+
+/// Render the unsaved changes confirmation dialog
+fn render_confirm_dialog(
+    frame: &mut Frame,
+    parent_area: Rect,
+    state: &SettingsState,
+    theme: &Theme,
+) {
+    // Calculate dialog size
+    let changes = state.get_change_descriptions();
+    let dialog_width = 50.min(parent_area.width.saturating_sub(4));
+    let dialog_height = (6 + changes.len() as u16).min(20).min(parent_area.height.saturating_sub(4));
+
+    // Center the dialog
+    let dialog_x = parent_area.x + (parent_area.width.saturating_sub(dialog_width)) / 2;
+    let dialog_y = parent_area.y + (parent_area.height.saturating_sub(dialog_height)) / 2;
+    let dialog_area = Rect::new(dialog_x, dialog_y, dialog_width, dialog_height);
+
+    // Clear and draw border
+    frame.render_widget(Clear, dialog_area);
+
+    let block = Block::default()
+        .title(" Unsaved Changes ")
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(theme.diagnostic_warning_fg))
+        .style(Style::default().bg(theme.popup_bg));
+    frame.render_widget(block, dialog_area);
+
+    // Inner area
+    let inner = Rect::new(
+        dialog_area.x + 2,
+        dialog_area.y + 1,
+        dialog_area.width.saturating_sub(4),
+        dialog_area.height.saturating_sub(2),
+    );
+
+    let mut y = inner.y;
+
+    // Prompt text
+    let prompt = "You have unsaved changes:";
+    let prompt_style = Style::default().fg(theme.popup_text_fg);
+    frame.render_widget(
+        Paragraph::new(prompt).style(prompt_style),
+        Rect::new(inner.x, y, inner.width, 1),
+    );
+    y += 2;
+
+    // List changes
+    let change_style = Style::default().fg(theme.line_number_fg);
+    for change in changes.iter().take((dialog_height as usize).saturating_sub(6)) {
+        let truncated = if change.len() > inner.width as usize - 2 {
+            format!("• {}...", &change[..inner.width as usize - 5])
+        } else {
+            format!("• {}", change)
+        };
+        frame.render_widget(
+            Paragraph::new(truncated).style(change_style),
+            Rect::new(inner.x, y, inner.width, 1),
+        );
+        y += 1;
+    }
+
+    // Skip to button row
+    let button_y = dialog_area.y + dialog_area.height - 3;
+
+    // Draw separator
+    let sep_line: String = "─".repeat(inner.width as usize);
+    frame.render_widget(
+        Paragraph::new(sep_line).style(Style::default().fg(theme.split_separator_fg)),
+        Rect::new(inner.x, button_y - 1, inner.width, 1),
+    );
+
+    // Render the three options
+    let options = ["Save and Exit", "Discard", "Cancel"];
+    let total_width: u16 = options.iter().map(|o| o.len() as u16 + 4).sum::<u16>() + 4; // +4 for gaps
+    let mut x = inner.x + (inner.width.saturating_sub(total_width)) / 2;
+
+    for (idx, label) in options.iter().enumerate() {
+        let is_selected = idx == state.confirm_dialog_selection;
+        let button_width = label.len() as u16 + 4;
+
+        let (fg, bg) = if is_selected {
+            (theme.menu_highlight_fg, theme.menu_highlight_bg)
+        } else {
+            (theme.popup_text_fg, theme.popup_bg)
+        };
+
+        let style = Style::default().fg(fg).bg(bg);
+        let text = format!("[ {} ]", label);
+        frame.render_widget(
+            Paragraph::new(text).style(style),
+            Rect::new(x, button_y, button_width, 1),
+        );
+
+        x += button_width + 2;
+    }
+
+    // Help text
+    let help = "←/→: Select   Enter: Confirm   Esc: Cancel";
+    let help_style = Style::default().fg(theme.line_number_fg);
+    frame.render_widget(
+        Paragraph::new(help).style(help_style),
+        Rect::new(inner.x, button_y + 1, inner.width, 1),
+    );
+}
+
+/// Render the help overlay showing keyboard shortcuts
+fn render_help_overlay(
+    frame: &mut Frame,
+    parent_area: Rect,
+    theme: &Theme,
+) {
+    // Define the help content
+    let help_items = [
+        ("Navigation", vec![
+            ("↑ / ↓", "Move up/down"),
+            ("Tab", "Switch between categories and settings"),
+            ("Enter", "Activate/toggle setting"),
+        ]),
+        ("Search", vec![
+            ("/", "Start search"),
+            ("Esc", "Cancel search"),
+            ("↑ / ↓", "Navigate results"),
+            ("Enter", "Jump to result"),
+        ]),
+        ("Actions", vec![
+            ("Ctrl+S", "Save settings"),
+            ("Ctrl+R", "Reset to default"),
+            ("Esc", "Close settings"),
+            ("?", "Toggle this help"),
+        ]),
+    ];
+
+    // Calculate dialog size
+    let dialog_width = 50.min(parent_area.width.saturating_sub(4));
+    let dialog_height = 20.min(parent_area.height.saturating_sub(4));
+
+    // Center the dialog
+    let dialog_x = parent_area.x + (parent_area.width.saturating_sub(dialog_width)) / 2;
+    let dialog_y = parent_area.y + (parent_area.height.saturating_sub(dialog_height)) / 2;
+    let dialog_area = Rect::new(dialog_x, dialog_y, dialog_width, dialog_height);
+
+    // Clear and draw border
+    frame.render_widget(Clear, dialog_area);
+
+    let block = Block::default()
+        .title(" Keyboard Shortcuts ")
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(theme.menu_highlight_fg))
+        .style(Style::default().bg(theme.popup_bg));
+    frame.render_widget(block, dialog_area);
+
+    // Inner area
+    let inner = Rect::new(
+        dialog_area.x + 2,
+        dialog_area.y + 1,
+        dialog_area.width.saturating_sub(4),
+        dialog_area.height.saturating_sub(2),
+    );
+
+    let mut y = inner.y;
+
+    for (section_name, bindings) in &help_items {
+        if y >= inner.y + inner.height.saturating_sub(1) {
+            break;
+        }
+
+        // Section header
+        let header_style = Style::default()
+            .fg(theme.menu_active_fg)
+            .add_modifier(Modifier::BOLD);
+        frame.render_widget(
+            Paragraph::new(*section_name).style(header_style),
+            Rect::new(inner.x, y, inner.width, 1),
+        );
+        y += 1;
+
+        for (key, description) in bindings {
+            if y >= inner.y + inner.height.saturating_sub(1) {
+                break;
+            }
+
+            let key_style = Style::default()
+                .fg(theme.diagnostic_info_fg)
+                .add_modifier(Modifier::BOLD);
+            let desc_style = Style::default().fg(theme.popup_text_fg);
+
+            let line = Line::from(vec![
+                Span::styled(format!("  {:12}", key), key_style),
+                Span::styled(*description, desc_style),
+            ]);
+            frame.render_widget(
+                Paragraph::new(line),
+                Rect::new(inner.x, y, inner.width, 1),
+            );
+            y += 1;
+        }
+
+        y += 1; // Blank line between sections
+    }
+
+    // Footer hint
+    let footer_y = dialog_area.y + dialog_area.height - 2;
+    let footer = "Press ? or Esc or Enter to close";
+    let footer_style = Style::default().fg(theme.line_number_fg);
+    let centered_x = inner.x + (inner.width.saturating_sub(footer.len() as u16)) / 2;
+    frame.render_widget(
+        Paragraph::new(footer).style(footer_style),
+        Rect::new(centered_x, footer_y, footer.len() as u16, 1),
+    );
 }
 
 #[cfg(test)]

@@ -37,6 +37,12 @@ pub struct SettingsState {
     pub search_results: Vec<SearchResult>,
     /// Selected search result index
     pub selected_search_result: usize,
+    /// Whether the unsaved changes confirmation dialog is showing
+    pub showing_confirm_dialog: bool,
+    /// Selected option in confirmation dialog (0=Save, 1=Discard, 2=Cancel)
+    pub confirm_dialog_selection: usize,
+    /// Whether the help overlay is showing
+    pub showing_help: bool,
 }
 
 impl SettingsState {
@@ -59,6 +65,9 @@ impl SettingsState {
             search_active: false,
             search_results: Vec::new(),
             selected_search_result: 0,
+            showing_confirm_dialog: false,
+            confirm_dialog_selection: 0,
+            showing_help: false,
         })
     }
 
@@ -304,6 +313,58 @@ impl SettingsState {
     /// Get the currently selected search result
     pub fn current_search_result(&self) -> Option<&SearchResult> {
         self.search_results.get(self.selected_search_result)
+    }
+
+    /// Show the unsaved changes confirmation dialog
+    pub fn show_confirm_dialog(&mut self) {
+        self.showing_confirm_dialog = true;
+        self.confirm_dialog_selection = 0; // Default to "Save and Exit"
+    }
+
+    /// Hide the confirmation dialog
+    pub fn hide_confirm_dialog(&mut self) {
+        self.showing_confirm_dialog = false;
+        self.confirm_dialog_selection = 0;
+    }
+
+    /// Move to next option in confirmation dialog
+    pub fn confirm_dialog_next(&mut self) {
+        self.confirm_dialog_selection = (self.confirm_dialog_selection + 1) % 3;
+    }
+
+    /// Move to previous option in confirmation dialog
+    pub fn confirm_dialog_prev(&mut self) {
+        self.confirm_dialog_selection = if self.confirm_dialog_selection == 0 {
+            2
+        } else {
+            self.confirm_dialog_selection - 1
+        };
+    }
+
+    /// Toggle the help overlay
+    pub fn toggle_help(&mut self) {
+        self.showing_help = !self.showing_help;
+    }
+
+    /// Hide the help overlay
+    pub fn hide_help(&mut self) {
+        self.showing_help = false;
+    }
+
+    /// Get list of pending changes for display
+    pub fn get_change_descriptions(&self) -> Vec<String> {
+        self.pending_changes
+            .iter()
+            .map(|(path, value)| {
+                let value_str = match value {
+                    serde_json::Value::Bool(b) => b.to_string(),
+                    serde_json::Value::Number(n) => n.to_string(),
+                    serde_json::Value::String(s) => format!("\"{}\"", s),
+                    _ => value.to_string(),
+                };
+                format!("{}: {}", path, value_str)
+            })
+            .collect()
     }
 }
 

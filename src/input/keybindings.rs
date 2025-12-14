@@ -480,6 +480,7 @@ pub enum Action {
     SettingsToggleFocus, // Toggle focus between category and settings panels
     SettingsActivate,   // Activate/toggle the current setting
     SettingsSearch,     // Start search in settings
+    SettingsHelp,       // Show settings help overlay
 
     // Terminal operations
     OpenTerminal,          // Open a new terminal in the current split
@@ -783,6 +784,7 @@ impl Action {
             "settings_toggle_focus" => Some(Action::SettingsToggleFocus),
             "settings_activate" => Some(Action::SettingsActivate),
             "settings_search" => Some(Action::SettingsSearch),
+            "settings_help" => Some(Action::SettingsHelp),
 
             _ => None,
         }
@@ -1696,6 +1698,7 @@ impl KeybindingResolver {
             Action::SettingsToggleFocus => "Toggle settings panel focus".to_string(),
             Action::SettingsActivate => "Activate setting".to_string(),
             Action::SettingsSearch => "Search settings".to_string(),
+            Action::SettingsHelp => "Show settings help".to_string(),
             Action::None => "No action".to_string(),
         }
     }

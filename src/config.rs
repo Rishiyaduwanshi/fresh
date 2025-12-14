@@ -1075,6 +1075,13 @@ impl Config {
                         when: None,
                         checkbox: None,
                     },
+                    MenuItem::Action {
+                        label: "Settings...".to_string(),
+                        action: "open_settings".to_string(),
+                        args: HashMap::new(),
+                        when: None,
+                        checkbox: None,
+                    },
                     MenuItem::Separator { separator: true },
                     MenuItem::Action {
                         label: "Split Horizontal".to_string(),

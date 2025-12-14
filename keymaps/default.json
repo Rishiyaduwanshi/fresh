@@ -1382,6 +1382,13 @@
       "when": "settings"
     },
     {
+      "key": "?",
+      "modifiers": [],
+      "action": "settings_help",
+      "args": {},
+      "when": "settings"
+    },
+    {
       "comment": "File Explorer context",
       "key": "Up",
       "modifiers": [],

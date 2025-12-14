@@ -268,8 +268,96 @@ impl Editor {
             return Ok(());
         }
 
-        // Handle settings context (including search mode)
+        // Handle settings context (including search mode, help overlay, and confirmation dialog)
         if matches!(context, crate::input::keybindings::KeyContext::Settings) {
+            // Check if help overlay is showing
+            let showing_help = self
+                .settings_state
+                .as_ref()
+                .map_or(false, |s| s.showing_help);
+
+            if showing_help {
+                // Any key closes the help overlay
+                match code {
+                    crossterm::event::KeyCode::Esc
+                    | crossterm::event::KeyCode::Char('?')
+                    | crossterm::event::KeyCode::Enter => {
+                        if let Some(ref mut state) = self.settings_state {
+                            state.hide_help();
+                        }
+                        return Ok(());
+                    }
+                    _ => return Ok(()), // Ignore other keys while help is showing
+                }
+            }
+
+            // Check if confirmation dialog is showing
+            let showing_confirm = self
+                .settings_state
+                .as_ref()
+                .map_or(false, |s| s.showing_confirm_dialog);
+
+            if showing_confirm {
+                // Handle confirmation dialog input
+                match code {
+                    crossterm::event::KeyCode::Left | crossterm::event::KeyCode::Up => {
+                        if let Some(ref mut state) = self.settings_state {
+                            state.confirm_dialog_prev();
+                        }
+                        return Ok(());
+                    }
+                    crossterm::event::KeyCode::Right | crossterm::event::KeyCode::Down => {
+                        if let Some(ref mut state) = self.settings_state {
+                            state.confirm_dialog_next();
+                        }
+                        return Ok(());
+                    }
+                    crossterm::event::KeyCode::Tab => {
+                        if let Some(ref mut state) = self.settings_state {
+                            state.confirm_dialog_next();
+                        }
+                        return Ok(());
+                    }
+                    crossterm::event::KeyCode::Enter => {
+                        // Execute the selected action
+                        let selection = self
+                            .settings_state
+                            .as_ref()
+                            .map(|s| s.confirm_dialog_selection)
+                            .unwrap_or(2);
+                        match selection {
+                            0 => {
+                                // Save and Exit
+                                self.save_settings();
+                                self.close_settings(false);
+                            }
+                            1 => {
+                                // Discard changes
+                                if let Some(ref mut state) = self.settings_state {
+                                    state.discard_changes();
+                                }
+                                self.close_settings(false);
+                            }
+                            _ => {
+                                // Cancel - just hide the dialog
+                                if let Some(ref mut state) = self.settings_state {
+                                    state.hide_confirm_dialog();
+                                }
+                            }
+                        }
+                        return Ok(());
+                    }
+                    crossterm::event::KeyCode::Esc => {
+                        // Cancel - hide the dialog
+                        if let Some(ref mut state) = self.settings_state {
+                            state.hide_confirm_dialog();
+                        }
+                        return Ok(());
+                    }
+                    _ => return Ok(()),
+                }
+            }
+
             // Check if search is active
             let search_active = self
                 .settings_state
@@ -1757,7 +1845,19 @@ impl Editor {
                 self.open_settings();
             }
             Action::CloseSettings => {
-                self.close_settings(false);
+                // Check if there are unsaved changes
+                let has_changes = self
+                    .settings_state
+                    .as_ref()
+                    .map_or(false, |s| s.has_changes());
+                if has_changes {
+                    // Show confirmation dialog
+                    if let Some(ref mut state) = self.settings_state {
+                        state.show_confirm_dialog();
+                    }
+                } else {
+                    self.close_settings(false);
+                }
             }
             Action::SettingsSave => {
                 self.save_settings();
@@ -1778,6 +1878,11 @@ impl Editor {
             Action::SettingsSearch => {
                 if let Some(ref mut state) = self.settings_state {
                     state.start_search();
+                }
+            }
+            Action::SettingsHelp => {
+                if let Some(ref mut state) = self.settings_state {
+                    state.toggle_help();
                 }
             }
             Action::PromptConfirm => {

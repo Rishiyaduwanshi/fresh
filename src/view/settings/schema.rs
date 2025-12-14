@@ -62,7 +62,7 @@ pub struct SettingCategory {
 #[derive(Debug, Deserialize)]
 struct RawSchema {
     #[serde(rename = "type")]
-    schema_type: Option<String>,
+    schema_type: Option<SchemaType>,
     description: Option<String>,
     default: Option<serde_json::Value>,
     properties: Option<HashMap<String, RawSchema>>,
@@ -76,7 +76,33 @@ struct RawSchema {
     #[serde(rename = "$defs")]
     defs: Option<HashMap<String, RawSchema>>,
     #[serde(rename = "additionalProperties")]
-    additional_properties: Option<Box<RawSchema>>,
+    additional_properties: Option<AdditionalProperties>,
+}
+
+/// additionalProperties can be a boolean or a schema object
+#[derive(Debug, Deserialize)]
+#[serde(untagged)]
+enum AdditionalProperties {
+    Bool(bool),
+    Schema(Box<RawSchema>),
+}
+
+/// JSON Schema type can be a single string or an array of strings
+#[derive(Debug, Deserialize)]
+#[serde(untagged)]
+enum SchemaType {
+    Single(String),
+    Multiple(Vec<String>),
+}
+
+impl SchemaType {
+    /// Get the primary type (first type if array, or the single type)
+    fn primary(&self) -> Option<&str> {
+        match self {
+            SchemaType::Single(s) => Some(s.as_str()),
+            SchemaType::Multiple(v) => v.first().map(|s| s.as_str()),
+        }
+    }
 }
 
 /// Parse the JSON Schema and build the category tree
@@ -191,7 +217,7 @@ fn determine_type(schema: &RawSchema, defs: &HashMap<String, RawSchema>) -> Sett
     }
 
     // Check type field
-    match schema.schema_type.as_deref() {
+    match schema.schema_type.as_ref().and_then(|t| t.primary()) {
         Some("boolean") => SettingType::Boolean,
         Some("integer") => {
             let minimum = schema.minimum.as_ref().and_then(|n| n.as_i64());
@@ -208,7 +234,7 @@ fn determine_type(schema: &RawSchema, defs: &HashMap<String, RawSchema>) -> Sett
             // Check if it's an array of strings
             if let Some(ref items) = schema.items {
                 let resolved = resolve_ref(items, defs);
-                if resolved.schema_type.as_deref() == Some("string") {
+                if resolved.schema_type.as_ref().and_then(|t| t.primary()) == Some("string") {
                     return SettingType::StringArray;
                 }
             }
@@ -217,11 +243,23 @@ fn determine_type(schema: &RawSchema, defs: &HashMap<String, RawSchema>) -> Sett
         Some("object") => {
             // Check for additionalProperties (map type)
             if let Some(ref add_props) = schema.additional_properties {
-                let resolved = resolve_ref(add_props, defs);
-                let value_schema = parse_setting("value", "", &resolved, defs);
-                return SettingType::Map {
-                    value_schema: Box::new(value_schema),
-                };
+                match add_props {
+                    AdditionalProperties::Schema(schema_box) => {
+                        let resolved = resolve_ref(schema_box, defs);
+                        let value_schema = parse_setting("value", "", resolved, defs);
+                        return SettingType::Map {
+                            value_schema: Box::new(value_schema),
+                        };
+                    }
+                    AdditionalProperties::Bool(true) => {
+                        // additionalProperties: true means any value is allowed
+                        return SettingType::Complex;
+                    }
+                    AdditionalProperties::Bool(false) => {
+                        // additionalProperties: false means no additional properties
+                        // Fall through to check for fixed properties
+                    }
+                }
             }
             // Regular object with fixed properties
             if let Some(ref props) = schema.properties {
