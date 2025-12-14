@@ -654,6 +654,16 @@ impl Editor {
             .set(context_keys::FILE_EXPLORER_SHOW_GITIGNORED, show_gitignored)
             .set(context_keys::HAS_SELECTION, has_selection);
 
+        // Render settings modal (before menu bar so menus can overlay)
+        if let Some(ref mut settings_state) = self.settings_state {
+            if settings_state.visible {
+                settings_state.update_focus_states();
+                let settings_layout =
+                    crate::view::settings::render_settings(frame, size, settings_state, &self.theme);
+                self.cached_layout.settings_layout = Some(settings_layout);
+            }
+        }
+
         crate::view::ui::MenuRenderer::render(
             frame,
             menu_bar_area,

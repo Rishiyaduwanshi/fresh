@@ -73,6 +73,13 @@
       "when": "global"
     },
     {
+      "key": ",",
+      "modifiers": ["ctrl"],
+      "action": "open_settings",
+      "args": {},
+      "when": "global"
+    },
+    {
       "comment": "Normal context - Close tab",
       "key": "w",
       "modifiers": ["alt"],
@@ -1323,6 +1330,49 @@
       "action": "popup_cancel",
       "args": {},
       "when": "popup"
+    },
+    {
+      "comment": "Settings context - Navigation and actions",
+      "key": "Escape",
+      "modifiers": [],
+      "action": "close_settings",
+      "args": {},
+      "when": "settings"
+    },
+    {
+      "key": "Up",
+      "modifiers": [],
+      "action": "move_up",
+      "args": {},
+      "when": "settings"
+    },
+    {
+      "key": "Down",
+      "modifiers": [],
+      "action": "move_down",
+      "args": {},
+      "when": "settings"
+    },
+    {
+      "key": "Tab",
+      "modifiers": [],
+      "action": "settings_toggle_focus",
+      "args": {},
+      "when": "settings"
+    },
+    {
+      "key": "Enter",
+      "modifiers": [],
+      "action": "settings_activate",
+      "args": {},
+      "when": "settings"
+    },
+    {
+      "key": "s",
+      "modifiers": ["ctrl"],
+      "action": "settings_save",
+      "args": {},
+      "when": "settings"
     },
     {
       "comment": "File Explorer context",

@@ -6,8 +6,10 @@ impl Editor {
     pub fn get_key_context(&self) -> crate::input::keybindings::KeyContext {
         use crate::input::keybindings::KeyContext;
 
-        // Priority order: Menu > Prompt > Popup > Rename > Current context (FileExplorer or Normal)
-        if self.menu_state.active_menu.is_some() {
+        // Priority order: Settings > Menu > Prompt > Popup > Rename > Current context (FileExplorer or Normal)
+        if self.settings_state.as_ref().map_or(false, |s| s.visible) {
+            KeyContext::Settings
+        } else if self.menu_state.active_menu.is_some() {
             KeyContext::Menu
         } else if self.is_prompting() {
             KeyContext::Prompt
@@ -264,6 +266,22 @@ impl Editor {
         // Handle file open dialog actions first (when active)
         if self.handle_file_open_action(&action) {
             return Ok(());
+        }
+
+        // Handle settings context navigation (intercept MoveUp/MoveDown)
+        if matches!(context, crate::input::keybindings::KeyContext::Settings) {
+            match action {
+                Action::MoveUp => {
+                    self.settings_navigate_up();
+                    return Ok(());
+                }
+                Action::MoveDown => {
+                    self.settings_navigate_down();
+                    return Ok(());
+                }
+                // Other settings actions are handled by handle_action
+                _ => {}
+            }
         }
 
         // Handle the action
@@ -1680,6 +1698,28 @@ impl Editor {
                         self.send_terminal_input(text.as_bytes());
                     }
                 }
+            }
+            Action::OpenSettings => {
+                self.open_settings();
+            }
+            Action::CloseSettings => {
+                self.close_settings(false);
+            }
+            Action::SettingsSave => {
+                self.save_settings();
+            }
+            Action::SettingsReset => {
+                if let Some(ref mut state) = self.settings_state {
+                    state.reset_current_to_default();
+                }
+            }
+            Action::SettingsToggleFocus => {
+                if let Some(ref mut state) = self.settings_state {
+                    state.toggle_focus();
+                }
+            }
+            Action::SettingsActivate => {
+                self.settings_activate_current();
             }
             Action::PromptConfirm => {
                 // Handle prompt confirmation (same logic as in handle_key)

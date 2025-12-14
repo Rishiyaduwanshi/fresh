@@ -1633,6 +1633,136 @@ impl Editor {
         self.set_active_buffer(buffer_id);
     }
 
+    /// Open the settings modal
+    pub fn open_settings(&mut self) {
+        // Include schema at compile time
+        const SCHEMA_JSON: &str = include_str!("../../plugins/config-schema.json");
+
+        // Create settings state if not exists, or show existing
+        if self.settings_state.is_none() {
+            match crate::view::settings::SettingsState::new(SCHEMA_JSON, &self.config) {
+                Ok(mut state) => {
+                    state.show();
+                    self.settings_state = Some(state);
+                }
+                Err(e) => {
+                    self.set_status_message(format!("Failed to open settings: {}", e));
+                    return;
+                }
+            }
+        } else if let Some(ref mut state) = self.settings_state {
+            state.show();
+        }
+    }
+
+    /// Close the settings modal
+    ///
+    /// If `save` is true and there are changes, they will be applied first.
+    pub fn close_settings(&mut self, save: bool) {
+        if save {
+            self.save_settings();
+        }
+        if let Some(ref mut state) = self.settings_state {
+            if !save && state.has_changes() {
+                // Discard changes
+                state.discard_changes();
+            }
+            state.hide();
+        }
+    }
+
+    /// Save the settings from the modal to config
+    pub fn save_settings(&mut self) {
+        let new_config = {
+            if let Some(ref state) = self.settings_state {
+                if !state.has_changes() {
+                    return;
+                }
+                match state.apply_changes(&self.config) {
+                    Ok(config) => config,
+                    Err(e) => {
+                        self.set_status_message(format!("Failed to apply settings: {}", e));
+                        return;
+                    }
+                }
+            } else {
+                return;
+            }
+        };
+
+        // Apply the new config
+        self.config = new_config;
+
+        // Save to disk
+        if let Err(e) = std::fs::create_dir_all(&self.dir_context.config_dir) {
+            self.set_status_message(format!("Failed to create config directory: {}", e));
+            return;
+        }
+
+        let config_path = self.dir_context.config_path();
+        match self.config.save_to_file(&config_path) {
+            Ok(()) => {
+                self.set_status_message("Settings saved".to_string());
+                // Clear pending changes and hide
+                if let Some(ref mut state) = self.settings_state {
+                    state.discard_changes();
+                    state.hide();
+                }
+            }
+            Err(e) => {
+                self.set_status_message(format!("Failed to save settings: {}", e));
+            }
+        }
+    }
+
+    /// Navigate settings up
+    pub fn settings_navigate_up(&mut self) {
+        if let Some(ref mut state) = self.settings_state {
+            state.select_prev();
+        }
+    }
+
+    /// Navigate settings down
+    pub fn settings_navigate_down(&mut self) {
+        if let Some(ref mut state) = self.settings_state {
+            state.select_next();
+        }
+    }
+
+    /// Activate/toggle the currently selected setting
+    pub fn settings_activate_current(&mut self) {
+        use crate::view::settings::items::SettingControl;
+
+        // Get the current item's control type to determine action
+        let action = {
+            if let Some(ref state) = self.settings_state {
+                state.current_item().map(|item| match &item.control {
+                    SettingControl::Toggle(toggle_state) => Some(("toggle", toggle_state.checked)),
+                    SettingControl::Number(_) => None, // Numbers need increment/decrement
+                    SettingControl::Dropdown(_) => None, // Dropdowns need popup
+                    SettingControl::Text(_) => None,   // Text needs input mode
+                    SettingControl::TextList(_) => None, // Lists need special handling
+                    SettingControl::Complex { .. } => None,
+                })
+            } else {
+                None
+            }
+        };
+
+        // Perform the action
+        if let Some(Some(("toggle", checked))) = action {
+            // Toggle boolean
+            if let Some(ref mut state) = self.settings_state {
+                if let Some(item) = state.current_item_mut() {
+                    if let SettingControl::Toggle(ref mut toggle_state) = item.control {
+                        toggle_state.checked = !checked;
+                    }
+                }
+                state.on_value_changed();
+            }
+        }
+    }
+
     /// Get text properties at the cursor position in the active buffer
     pub fn get_text_properties_at_cursor(
         &self,

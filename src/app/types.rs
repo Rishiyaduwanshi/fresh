@@ -394,4 +394,6 @@ pub(super) struct CachedLayout {
     /// Maps visual row index to character position mappings
     /// Used to translate screen coordinates to buffer byte positions
     pub view_line_mappings: HashMap<SplitId, Vec<ViewLineMapping>>,
+    /// Settings modal layout for hit testing
+    pub settings_layout: Option<crate::view::settings::SettingsLayout>,
 }

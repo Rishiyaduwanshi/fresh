@@ -6,7 +6,7 @@ use super::render::ControlLayoutInfo;
 use ratatui::layout::Rect;
 
 /// Layout information for the entire settings UI
-#[derive(Debug, Default)]
+#[derive(Debug, Clone, Default)]
 pub struct SettingsLayout {
     /// The modal area
     pub modal_area: Rect,
