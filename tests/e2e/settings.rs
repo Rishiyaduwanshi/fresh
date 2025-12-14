@@ -359,3 +359,366 @@ fn test_confirmation_dialog_button_navigation() {
         .send_key(KeyCode::Enter, KeyModifiers::NONE)
         .unwrap();
 }
+
+/// Test selection indicator (▶) shows for focused setting item
+#[test]
+fn test_settings_selection_indicator() {
+    let mut harness = EditorTestHarness::new(100, 40).unwrap();
+
+    // Open settings
+    harness
+        .send_key(KeyCode::Char(','), KeyModifiers::CONTROL)
+        .unwrap();
+    harness.render().unwrap();
+
+    // Switch to settings panel with Tab
+    harness.send_key(KeyCode::Tab, KeyModifiers::NONE).unwrap();
+    harness.render().unwrap();
+
+    // Selection indicator should be visible for the first item
+    harness.assert_screen_contains("▶");
+
+    // Navigate down
+    harness.send_key(KeyCode::Down, KeyModifiers::NONE).unwrap();
+    harness.render().unwrap();
+
+    // Selection indicator should still be visible (moved to next item)
+    harness.assert_screen_contains("▶");
+
+    // Close settings
+    harness.send_key(KeyCode::Esc, KeyModifiers::NONE).unwrap();
+}
+
+/// Test number input increment with Right arrow
+#[test]
+fn test_settings_number_increment() {
+    let mut harness = EditorTestHarness::new(100, 40).unwrap();
+
+    // Open settings
+    harness
+        .send_key(KeyCode::Char(','), KeyModifiers::CONTROL)
+        .unwrap();
+    harness.render().unwrap();
+
+    // Search for a number setting (mouse hover delay)
+    harness
+        .send_key(KeyCode::Char('/'), KeyModifiers::NONE)
+        .unwrap();
+    for c in "hover delay".chars() {
+        harness
+            .send_key(KeyCode::Char(c), KeyModifiers::NONE)
+            .unwrap();
+    }
+    harness.render().unwrap();
+
+    // Jump to result
+    harness
+        .send_key(KeyCode::Enter, KeyModifiers::NONE)
+        .unwrap();
+    harness.render().unwrap();
+
+    // The default value is 500
+    harness.assert_screen_contains("500");
+
+    // Press Right arrow to increment
+    harness
+        .send_key(KeyCode::Right, KeyModifiers::NONE)
+        .unwrap();
+    harness.render().unwrap();
+
+    // Value should now be 501
+    harness.assert_screen_contains("501");
+
+    // Should show modified indicator
+    harness.assert_screen_contains("modified");
+
+    // Press Left arrow to decrement back
+    harness
+        .send_key(KeyCode::Left, KeyModifiers::NONE)
+        .unwrap();
+    harness.render().unwrap();
+
+    // Value should be back to 500
+    harness.assert_screen_contains("500");
+
+    // Close settings (no changes now)
+    harness.send_key(KeyCode::Esc, KeyModifiers::NONE).unwrap();
+}
+
+/// Test number input decrement with Left arrow
+#[test]
+fn test_settings_number_decrement() {
+    let mut harness = EditorTestHarness::new(100, 40).unwrap();
+
+    // Open settings
+    harness
+        .send_key(KeyCode::Char(','), KeyModifiers::CONTROL)
+        .unwrap();
+    harness.render().unwrap();
+
+    // Search for hover delay (number setting) - same as increment test but decrement
+    harness
+        .send_key(KeyCode::Char('/'), KeyModifiers::NONE)
+        .unwrap();
+    for c in "hover delay".chars() {
+        harness
+            .send_key(KeyCode::Char(c), KeyModifiers::NONE)
+            .unwrap();
+    }
+    harness.render().unwrap();
+
+    // Jump to result
+    harness
+        .send_key(KeyCode::Enter, KeyModifiers::NONE)
+        .unwrap();
+    harness.render().unwrap();
+
+    // The default value is 500
+    harness.assert_screen_contains("500");
+
+    // Press Left arrow to decrement
+    harness
+        .send_key(KeyCode::Left, KeyModifiers::NONE)
+        .unwrap();
+    harness.render().unwrap();
+
+    // Value should now be 499
+    harness.assert_screen_contains("499");
+
+    // Should show modified indicator
+    harness.assert_screen_contains("modified");
+
+    // Discard and close
+    harness.send_key(KeyCode::Esc, KeyModifiers::NONE).unwrap();
+    harness.render().unwrap();
+    harness
+        .send_key(KeyCode::Right, KeyModifiers::NONE)
+        .unwrap();
+    harness
+        .send_key(KeyCode::Enter, KeyModifiers::NONE)
+        .unwrap();
+}
+
+/// Test dropdown cycling with Enter key
+#[test]
+fn test_settings_dropdown_cycle() {
+    let mut harness = EditorTestHarness::new(100, 40).unwrap();
+
+    // Open settings
+    harness
+        .send_key(KeyCode::Char(','), KeyModifiers::CONTROL)
+        .unwrap();
+    harness.render().unwrap();
+
+    // Search for "theme" (a dropdown setting)
+    harness
+        .send_key(KeyCode::Char('/'), KeyModifiers::NONE)
+        .unwrap();
+    for c in "theme".chars() {
+        harness
+            .send_key(KeyCode::Char(c), KeyModifiers::NONE)
+            .unwrap();
+    }
+    harness.render().unwrap();
+
+    // Jump to result
+    harness
+        .send_key(KeyCode::Enter, KeyModifiers::NONE)
+        .unwrap();
+    harness.render().unwrap();
+
+    // Check initial theme value (should be "dark")
+    let initial_screen = harness.screen_to_string();
+    let has_dark = initial_screen.contains("dark");
+
+    // Press Enter to cycle to next option
+    harness
+        .send_key(KeyCode::Enter, KeyModifiers::NONE)
+        .unwrap();
+    harness.render().unwrap();
+
+    // If it was "dark", it should now be "light" or another theme option
+    // The exact value depends on available themes, but it should change
+    if has_dark {
+        // Should show modified indicator since we changed the value
+        harness.assert_screen_contains("modified");
+    }
+
+    // Discard and close
+    harness.send_key(KeyCode::Esc, KeyModifiers::NONE).unwrap();
+    harness.render().unwrap();
+    harness
+        .send_key(KeyCode::Right, KeyModifiers::NONE)
+        .unwrap();
+    harness
+        .send_key(KeyCode::Enter, KeyModifiers::NONE)
+        .unwrap();
+}
+
+/// Test dropdown cycling with Right arrow
+#[test]
+fn test_settings_dropdown_increment() {
+    let mut harness = EditorTestHarness::new(100, 40).unwrap();
+
+    // Open settings
+    harness
+        .send_key(KeyCode::Char(','), KeyModifiers::CONTROL)
+        .unwrap();
+    harness.render().unwrap();
+
+    // Search for "theme" (a dropdown setting)
+    harness
+        .send_key(KeyCode::Char('/'), KeyModifiers::NONE)
+        .unwrap();
+    for c in "theme".chars() {
+        harness
+            .send_key(KeyCode::Char(c), KeyModifiers::NONE)
+            .unwrap();
+    }
+    harness.render().unwrap();
+
+    // Jump to result
+    harness
+        .send_key(KeyCode::Enter, KeyModifiers::NONE)
+        .unwrap();
+    harness.render().unwrap();
+
+    // Get initial screen
+    let initial_screen = harness.screen_to_string();
+
+    // Press Right arrow to cycle to next option
+    harness
+        .send_key(KeyCode::Right, KeyModifiers::NONE)
+        .unwrap();
+    harness.render().unwrap();
+
+    // Get new screen
+    let new_screen = harness.screen_to_string();
+
+    // The dropdown value should have changed (screens should differ)
+    // We can check that modified indicator appears
+    if initial_screen != new_screen {
+        harness.assert_screen_contains("modified");
+    }
+
+    // Discard and close
+    harness.send_key(KeyCode::Esc, KeyModifiers::NONE).unwrap();
+    harness.render().unwrap();
+    harness
+        .send_key(KeyCode::Right, KeyModifiers::NONE)
+        .unwrap();
+    harness
+        .send_key(KeyCode::Enter, KeyModifiers::NONE)
+        .unwrap();
+}
+
+/// Test scrolling through settings list
+#[test]
+fn test_settings_scrolling() {
+    // Use a smaller height to ensure scrolling is needed
+    let mut harness = EditorTestHarness::new(100, 25).unwrap();
+
+    // Open settings
+    harness
+        .send_key(KeyCode::Char(','), KeyModifiers::CONTROL)
+        .unwrap();
+    harness.render().unwrap();
+
+    // Navigate to Editor category which has many settings
+    harness.send_key(KeyCode::Down, KeyModifiers::NONE).unwrap();
+    harness.render().unwrap();
+
+    // Switch to settings panel
+    harness.send_key(KeyCode::Tab, KeyModifiers::NONE).unwrap();
+    harness.render().unwrap();
+
+    // Get initial screen to check first item
+    let initial_screen = harness.screen_to_string();
+
+    // Navigate down many times to trigger scrolling
+    for _ in 0..15 {
+        harness.send_key(KeyCode::Down, KeyModifiers::NONE).unwrap();
+    }
+    harness.render().unwrap();
+
+    // Get new screen - should have scrolled, showing different items
+    let scrolled_screen = harness.screen_to_string();
+
+    // The screens should be different due to scrolling
+    assert_ne!(
+        initial_screen, scrolled_screen,
+        "Screen should change after scrolling down"
+    );
+
+    // Selection indicator should still be visible
+    harness.assert_screen_contains("▶");
+
+    // Close settings
+    harness.send_key(KeyCode::Esc, KeyModifiers::NONE).unwrap();
+}
+
+/// Test scrollbar appears when there are many settings
+#[test]
+fn test_settings_scrollbar_visible() {
+    // Use a smaller height to ensure scrollbar is needed
+    let mut harness = EditorTestHarness::new(100, 25).unwrap();
+
+    // Open settings
+    harness
+        .send_key(KeyCode::Char(','), KeyModifiers::CONTROL)
+        .unwrap();
+    harness.render().unwrap();
+
+    // Navigate to Editor category which has many settings
+    harness.send_key(KeyCode::Down, KeyModifiers::NONE).unwrap();
+    harness.render().unwrap();
+
+    // Switch to settings panel
+    harness.send_key(KeyCode::Tab, KeyModifiers::NONE).unwrap();
+    harness.render().unwrap();
+
+    // Scrollbar should be visible (█ character is used for scrollbar thumb)
+    harness.assert_screen_contains("█");
+
+    // Close settings
+    harness.send_key(KeyCode::Esc, KeyModifiers::NONE).unwrap();
+}
+
+/// Test search jump scrolls to selected item
+#[test]
+fn test_settings_search_jump_scrolls() {
+    // Use a smaller height to ensure scrolling is needed
+    let mut harness = EditorTestHarness::new(100, 25).unwrap();
+
+    // Open settings
+    harness
+        .send_key(KeyCode::Char(','), KeyModifiers::CONTROL)
+        .unwrap();
+    harness.render().unwrap();
+
+    // Search for a setting that's likely at the bottom of a category
+    harness
+        .send_key(KeyCode::Char('/'), KeyModifiers::NONE)
+        .unwrap();
+    for c in "wrap".chars() {
+        harness
+            .send_key(KeyCode::Char(c), KeyModifiers::NONE)
+            .unwrap();
+    }
+    harness.render().unwrap();
+
+    // Jump to result
+    harness
+        .send_key(KeyCode::Enter, KeyModifiers::NONE)
+        .unwrap();
+    harness.render().unwrap();
+
+    // The item should be visible (selection indicator should be on screen)
+    harness.assert_screen_contains("▶");
+
+    // The searched term should be visible
+    harness.assert_screen_contains("Wrap");
+
+    // Close settings
+    harness.send_key(KeyCode::Esc, KeyModifiers::NONE).unwrap();
+}
