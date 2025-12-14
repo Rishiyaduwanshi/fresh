@@ -4,6 +4,7 @@
 
 pub mod controls;
 pub mod file_tree;
+pub mod settings;
 pub mod margin;
 pub mod overlay;
 pub mod popup;
