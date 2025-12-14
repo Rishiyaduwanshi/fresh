@@ -529,30 +529,27 @@ The settings editor will follow Fresh's established patterns while introducing r
 #### Module Structure
 
 ```
-crates/
-└── fresh-config/           # NEW: Separate crate for config types
-    ├── Cargo.toml          # Depends on schemars, serde
-    ├── src/lib.rs          # Config, EditorConfig, etc. (moved from src/config.rs)
-    └── examples/
-        └── generate_schema.rs  # Trivial: schemars::schema_for!(Config)
-
-src/view/
-├── settings/
-│   ├── mod.rs          # Public exports, SettingsView coordinator
-│   ├── schema.rs       # Load and parse JSON Schema, build SettingsTree
-│   ├── state.rs        # SettingsState, focus, change tracking
-│   ├── render.rs       # SettingsRenderer (static render method)
-│   ├── layout.rs       # SettingsLayout for hit testing
-│   └── search.rs       # Fuzzy search over settings (titles + descriptions)
+src/
+├── bin/
+│   └── generate_schema.rs  # Schema generation binary (uses schemars)
 │
-├── controls/           # NEW: Reusable form controls
-│   ├── mod.rs          # Control enum and common traits
-│   ├── toggle.rs       # Boolean checkbox control
-│   ├── number_input.rs # Numeric input with validation
-│   ├── dropdown.rs     # Enum/list selector
-│   ├── text_input.rs   # Single-line text field
-│   ├── text_list.rs    # List of strings (add/remove)
-│   └── button.rs       # Clickable button
+└── view/
+    ├── settings/
+    │   ├── mod.rs          # Public exports, SettingsView coordinator
+    │   ├── schema.rs       # Load and parse JSON Schema, build SettingsTree
+    │   ├── state.rs        # SettingsState, focus, change tracking
+    │   ├── render.rs       # SettingsRenderer (static render method)
+    │   ├── layout.rs       # SettingsLayout for hit testing
+    │   └── search.rs       # Fuzzy search over settings (titles + descriptions)
+    │
+    └── controls/           # NEW: Reusable form controls
+        ├── mod.rs          # Control enum and common traits
+        ├── toggle.rs       # Boolean checkbox control
+        ├── number_input.rs # Numeric input with validation
+        ├── dropdown.rs     # Enum/list selector
+        ├── text_input.rs   # Single-line text field
+        ├── text_list.rs    # List of strings (add/remove)
+        └── button.rs       # Clickable button
 ```
 
 #### New KeyContext
@@ -836,59 +833,43 @@ build.rs (fragile):
 └── Hard to maintain
 ```
 
-#### Solution: Separate Config Crate
+#### Solution: Schema Generation Binary
 
-Move config types to a separate crate that can be compiled independently:
+Add a simple binary that uses schemars properly:
 
 ```
-crates/
-└── fresh-config/
-    ├── Cargo.toml        # Depends on schemars, serde
-    ├── src/
-    │   └── lib.rs        # Config, EditorConfig, etc. (moved from src/config.rs)
-    └── examples/
-        └── generate_schema.rs  # Uses schemars::schema_for!(Config)
+src/bin/
+└── generate_schema.rs  # Uses schemars::schema_for!(Config)
 ```
 
-**Schema generation becomes trivial:**
+**Schema generation is trivial (5 lines):**
 ```rust
-// examples/generate_schema.rs
 fn main() {
     let schema = schemars::schema_for!(Config);
     println!("{}", serde_json::to_string_pretty(&schema).unwrap());
 }
 ```
 
-**Build integration:**
+**Usage:**
 ```bash
-# In CI or Makefile
-cargo run -p fresh-config --example generate_schema > plugins/config-schema.json
+cargo run --bin generate_schema > plugins/config-schema.json
+```
+
+**CI verification** (in `.github/workflows/ci.yml`):
+```yaml
+- name: Generate schema
+  run: cargo run --bin generate_schema > /tmp/config-schema.json
+- name: Check schema is up-to-date
+  run: diff -u plugins/config-schema.json /tmp/config-schema.json
 ```
 
 #### Benefits
 
 - **Standard tooling**: Uses schemars as intended, no custom parsing
 - **Correct by construction**: Schema always matches types exactly
-- **Maintainable**: Delete 600 lines of build.rs, replace with 5-line example
-- **Reusable**: Config crate can be used by other tools (LSP for config validation, etc.)
-- **Testable**: Can unit test schema generation
-
-#### Alternative: Runtime Schema Generation
-
-If separate crate is overkill, generate schema at runtime:
-
-```rust
-// In settings UI initialization
-lazy_static! {
-    static ref CONFIG_SCHEMA: RootSchema = schemars::schema_for!(Config);
-}
-```
-
-This is simpler but means:
-- Schema not available to external tools without running Fresh
-- Slight startup cost (negligible in practice)
-
-**Recommendation**: Separate crate for robustness and external tool support.
+- **Maintainable**: Deleted ~620 lines from build.rs, replaced with 5-line binary
+- **CI verified**: Schema drift is caught in CI
+- **No restructuring needed**: Config types stay in main crate
 
 ### Phase 3: Settings UI with Schema
 

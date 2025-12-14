@@ -62,6 +62,20 @@ jobs:
         run: cargo doc --no-deps --all-features
         env:
           RUSTDOCFLAGS: --cfg docsrs
+  schema:
+    name: schema
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+      - name: Cache Cargo dependencies
+        uses: Swatinem/rust-cache@v2
+      - name: Generate schema
+        run: cargo run --bin generate_schema > /tmp/config-schema.json
+      - name: Check schema is up-to-date
+        run: diff -u plugins/config-schema.json /tmp/config-schema.json
+
   test:
     runs-on: ${{ matrix.os }}
     name: test ${{ matrix.os }}
