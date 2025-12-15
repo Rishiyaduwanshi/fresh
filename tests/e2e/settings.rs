@@ -801,3 +801,230 @@ fn test_settings_theme_dropdown_cycle() {
         .send_key(KeyCode::Enter, KeyModifiers::NONE)
         .unwrap();
 }
+
+// =============================================================================
+// CRITICAL BUG TESTS - These tests should fail until the bugs are fixed
+// =============================================================================
+
+/// BUG: Opening Settings from terminal mode causes keystrokes to go to terminal
+///
+/// When the user is in terminal mode and opens the Settings dialog (via Ctrl+,
+/// or command palette), keyboard input should go to the Settings dialog, not
+/// to the terminal behind it. Currently, the terminal continues to capture
+/// input even when Settings is open, requiring users to manually exit terminal
+/// mode first.
+///
+/// Expected behavior: Settings dialog captures all keyboard input when open
+/// Actual behavior: Terminal behind dialog receives keystrokes
+#[test]
+fn test_settings_from_terminal_mode_captures_input() {
+    use portable_pty::{native_pty_system, PtySize};
+
+    // Skip if PTY not available
+    if native_pty_system()
+        .openpty(PtySize {
+            rows: 1,
+            cols: 1,
+            pixel_width: 0,
+            pixel_height: 0,
+        })
+        .is_err()
+    {
+        eprintln!("Skipping test: PTY not available");
+        return;
+    }
+
+    let mut harness = EditorTestHarness::new(100, 40).unwrap();
+
+    // Open a terminal (this enters terminal mode automatically)
+    harness.editor_mut().open_terminal();
+    harness.render().unwrap();
+
+    // Verify we're in terminal mode
+    assert!(
+        harness.editor().is_terminal_mode(),
+        "Should be in terminal mode after opening terminal"
+    );
+
+    // Open settings with Ctrl+, (this should work even in terminal mode)
+    harness
+        .send_key(KeyCode::Char(','), KeyModifiers::CONTROL)
+        .unwrap();
+    harness.render().unwrap();
+
+    // Settings should be visible
+    harness.assert_screen_contains("Settings");
+
+    // Now try to use Settings navigation - press Down to navigate categories
+    harness.send_key(KeyCode::Down, KeyModifiers::NONE).unwrap();
+    harness.render().unwrap();
+
+    // The Settings should respond to navigation, not the terminal
+    // If the bug exists, the Down key would have gone to the terminal shell
+    // and the Settings category wouldn't have changed
+
+    // Navigate down should move from General to Editor
+    // We can verify by switching to settings panel and checking we see Editor settings
+    harness.send_key(KeyCode::Tab, KeyModifiers::NONE).unwrap();
+    harness.render().unwrap();
+
+    // Editor category has "Auto Indent" which General doesn't have prominently
+    // If Down key worked in Settings, we should now be viewing Editor settings
+    harness.assert_screen_contains("Auto Indent");
+
+    // Clean up - close settings
+    harness.send_key(KeyCode::Esc, KeyModifiers::NONE).unwrap();
+    harness.render().unwrap();
+
+    // If there's an unsaved changes dialog, dismiss it
+    if harness.screen_to_string().contains("Unsaved Changes") {
+        // Select Discard
+        harness
+            .send_key(KeyCode::Right, KeyModifiers::NONE)
+            .unwrap();
+        harness
+            .send_key(KeyCode::Enter, KeyModifiers::NONE)
+            .unwrap();
+    }
+}
+
+/// BUG: Footer buttons (Reset/Save/Cancel) cannot be accessed via keyboard
+///
+/// The Settings dialog has footer buttons [Reset] [Save] [Cancel] but they
+/// cannot be reached using Tab navigation. Tab only cycles between the
+/// category panel (left) and settings panel (right), never reaching the
+/// footer buttons.
+///
+/// Expected behavior: Tab cycles through: categories -> settings -> footer buttons
+/// Actual behavior: Tab only cycles between categories and settings panels
+#[test]
+fn test_settings_footer_buttons_keyboard_accessible() {
+    let mut harness = EditorTestHarness::new(100, 40).unwrap();
+
+    // Open settings
+    harness
+        .send_key(KeyCode::Char(','), KeyModifiers::CONTROL)
+        .unwrap();
+    harness.render().unwrap();
+    harness.assert_screen_contains("Settings");
+
+    // Make a change so footer buttons become relevant
+    // Search for and toggle a setting
+    harness
+        .send_key(KeyCode::Char('/'), KeyModifiers::NONE)
+        .unwrap();
+    for c in "check".chars() {
+        harness
+            .send_key(KeyCode::Char(c), KeyModifiers::NONE)
+            .unwrap();
+    }
+    harness
+        .send_key(KeyCode::Enter, KeyModifiers::NONE)
+        .unwrap();
+    harness
+        .send_key(KeyCode::Enter, KeyModifiers::NONE)
+        .unwrap();
+    harness.render().unwrap();
+
+    // Should show modified indicator
+    harness.assert_screen_contains("modified");
+
+    // Now try to Tab to the footer buttons
+    // Currently in settings panel, Tab should eventually reach footer
+    // We'll Tab multiple times and check if we can get to a Save button
+
+    let mut found_save_focused = false;
+    for _ in 0..10 {
+        harness.send_key(KeyCode::Tab, KeyModifiers::NONE).unwrap();
+        harness.render().unwrap();
+
+        let screen = harness.screen_to_string();
+
+        // Check if Save button appears to be focused/selected
+        // When footer is focused, pressing Enter on Save should work
+        // We could detect this by looking for a focus indicator on Save
+        if screen.contains("▶[ Save ]") || screen.contains("> Save") {
+            found_save_focused = true;
+            break;
+        }
+
+        // Alternative: try pressing Enter and see if it saves (no unsaved dialog)
+        // But that's destructive, so we just check for visual indicator
+    }
+
+    // This assertion will fail until the bug is fixed
+    assert!(
+        found_save_focused,
+        "Should be able to Tab to Save button in footer. \
+         Currently Tab only cycles between category and settings panels."
+    );
+
+    // Clean up
+    harness.send_key(KeyCode::Esc, KeyModifiers::NONE).unwrap();
+    harness.render().unwrap();
+    if harness.screen_to_string().contains("Unsaved Changes") {
+        harness
+            .send_key(KeyCode::Right, KeyModifiers::NONE)
+            .unwrap();
+        harness
+            .send_key(KeyCode::Enter, KeyModifiers::NONE)
+            .unwrap();
+    }
+}
+
+/// BUG: Pressing Ctrl+S should save settings when Settings dialog is open
+///
+/// The keyboard shortcuts hint shows Ctrl+S for save, and this is the standard
+/// save shortcut. When Settings dialog is open with unsaved changes, Ctrl+S
+/// should save those changes.
+///
+/// This is related to footer button accessibility - if we can't Tab to Save,
+/// at least Ctrl+S should work as an alternative.
+#[test]
+fn test_settings_ctrl_s_saves() {
+    let mut harness = EditorTestHarness::new(100, 40).unwrap();
+
+    // Open settings
+    harness
+        .send_key(KeyCode::Char(','), KeyModifiers::CONTROL)
+        .unwrap();
+    harness.render().unwrap();
+
+    // Make a change
+    harness
+        .send_key(KeyCode::Char('/'), KeyModifiers::NONE)
+        .unwrap();
+    for c in "check".chars() {
+        harness
+            .send_key(KeyCode::Char(c), KeyModifiers::NONE)
+            .unwrap();
+    }
+    harness
+        .send_key(KeyCode::Enter, KeyModifiers::NONE)
+        .unwrap();
+    harness
+        .send_key(KeyCode::Enter, KeyModifiers::NONE)
+        .unwrap();
+    harness.render().unwrap();
+
+    // Should show modified
+    harness.assert_screen_contains("modified");
+
+    // Press Ctrl+S to save
+    harness
+        .send_key(KeyCode::Char('s'), KeyModifiers::CONTROL)
+        .unwrap();
+    harness.render().unwrap();
+
+    // After saving, "modified" indicator should be gone
+    // (Settings should still be open, just no longer modified)
+    harness.assert_screen_contains("Settings");
+    harness.assert_screen_not_contains("modified");
+
+    // Close settings (should close without unsaved changes dialog)
+    harness.send_key(KeyCode::Esc, KeyModifiers::NONE).unwrap();
+    harness.render().unwrap();
+
+    // Should close directly without confirmation since we saved
+    harness.assert_screen_not_contains("Unsaved Changes");
+}
