@@ -1717,9 +1717,9 @@ fn test_double_click_requires_same_position() {
     );
 
     // Now verify that double-click at the SAME position DOES work
-    // Wait for double-click timeout to reset
+    // Wait for double-click timeout to reset (use 3x for safety under CPU load)
     let double_click_delay =
-        std::time::Duration::from_millis(harness.config().editor.double_click_time_ms * 2);
+        std::time::Duration::from_millis(harness.config().editor.double_click_time_ms * 3);
     std::thread::sleep(double_click_delay);
 
     // Double-click at position A (same position both times)
