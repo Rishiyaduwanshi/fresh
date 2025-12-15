@@ -350,9 +350,16 @@ impl TextBuffer {
         let dest_path = path.as_ref();
         let total = self.total_bytes();
 
+        // Get original file metadata (permissions, owner, etc.) before writing
+        // so we can preserve it after creating/renaming the temp file
+        let original_metadata = std::fs::metadata(dest_path).ok();
+
         if total == 0 {
             // Empty file - just create it
             std::fs::File::create(dest_path)?;
+            if let Some(ref meta) = original_metadata {
+                Self::restore_file_metadata(dest_path, meta)?;
+            }
             self.file_path = Some(dest_path.to_path_buf());
             self.mark_saved_snapshot();
             self.saved_file_size = Some(0);
@@ -425,6 +432,11 @@ impl TextBuffer {
         out_file.sync_all()?;
         drop(out_file);
 
+        // Restore original file permissions/owner before renaming
+        if let Some(ref meta) = original_metadata {
+            Self::restore_file_metadata(&temp_path, meta)?;
+        }
+
         // Atomically replace the original file
         std::fs::rename(&temp_path, dest_path)?;
 
@@ -439,6 +451,30 @@ impl TextBuffer {
 
         self.file_path = Some(dest_path.to_path_buf());
         self.mark_saved_snapshot();
+        Ok(())
+    }
+
+    /// Restore file metadata (permissions, owner/group) from original file
+    fn restore_file_metadata(path: &Path, original_meta: &std::fs::Metadata) -> io::Result<()> {
+        // Restore permissions (works cross-platform)
+        std::fs::set_permissions(path, original_meta.permissions())?;
+
+        // On Unix, also restore owner and group
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::MetadataExt;
+            let uid = original_meta.uid();
+            let gid = original_meta.gid();
+            // Use libc to set owner/group - ignore errors since we may not have permission
+            // (e.g., only root can chown to a different user)
+            unsafe {
+                use std::os::unix::ffi::OsStrExt;
+                let c_path = std::ffi::CString::new(path.as_os_str().as_bytes())
+                    .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e))?;
+                libc::chown(c_path.as_ptr(), uid, gid);
+            }
+        }
+
         Ok(())
     }
 
