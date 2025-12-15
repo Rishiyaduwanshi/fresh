@@ -12,9 +12,10 @@ use std::path::PathBuf;
 /// Configuration for process resource limits
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, JsonSchema)]
 pub struct ProcessLimits {
-    /// Maximum memory usage in megabytes (None = no limit)
+    /// Maximum memory usage as percentage of total system memory (None = no limit)
+    /// Default is 50% of total system memory
     #[serde(default)]
-    pub max_memory_mb: Option<u64>,
+    pub max_memory_percent: Option<u32>,
 
     /// Maximum CPU usage as percentage of total CPU (None = no limit)
     /// For multi-core systems, 100% = 1 core, 200% = 2 cores, etc.
@@ -33,7 +34,7 @@ fn default_true() -> bool {
 impl Default for ProcessLimits {
     fn default() -> Self {
         Self {
-            max_memory_mb: Self::default_memory_limit_mb(),
+            max_memory_percent: Some(50),       // 50% of total memory
             max_cpu_percent: Some(90),          // 90% of total CPU
             enabled: cfg!(target_os = "linux"), // Only enabled on Linux by default
         }
@@ -41,11 +42,13 @@ impl Default for ProcessLimits {
 }
 
 impl ProcessLimits {
-    /// Get the default memory limit (50% of total system memory)
-    pub fn default_memory_limit_mb() -> Option<u64> {
-        SystemResources::total_memory_mb()
-            .map(|total| total / 2) // 50% of total memory
-            .ok()
+    /// Get the memory limit in bytes, computed from percentage of total system memory
+    pub fn memory_limit_bytes(&self) -> Option<u64> {
+        self.max_memory_percent.and_then(|percent| {
+            SystemResources::total_memory_mb()
+                .ok()
+                .map(|total_mb| (total_mb as u64 * percent as u64 / 100) * 1024 * 1024)
+        })
     }
 
     /// Get the default CPU limit (90% of total CPU)
@@ -56,7 +59,7 @@ impl ProcessLimits {
     /// Create a new ProcessLimits with no restrictions
     pub fn unlimited() -> Self {
         Self {
-            max_memory_mb: None,
+            max_memory_percent: None,
             max_cpu_percent: None,
             enabled: false,
         }
@@ -87,7 +90,7 @@ impl ProcessLimits {
 
     #[cfg(target_os = "linux")]
     fn apply_linux_limits(&self, cmd: &mut tokio::process::Command) -> io::Result<()> {
-        let max_memory_bytes = self.max_memory_mb.map(|mb| mb * 1024 * 1024);
+        let max_memory_bytes = self.memory_limit_bytes();
         let _max_cpu_percent = self.max_cpu_percent;
 
         // Find a user-delegated cgroup path if available
@@ -106,11 +109,14 @@ impl ProcessLimits {
             // Try to create the cgroup directory
             if fs::create_dir(&cgroup_full).is_ok() {
                 // Try memory limit (works without full delegation)
-                if let Some(memory_mb) = self.max_memory_mb {
-                    let memory_bytes = memory_mb * 1024 * 1024;
+                if let Some(memory_bytes) = max_memory_bytes {
                     if set_cgroup_memory(&cgroup_full, memory_bytes).is_ok() {
                         memory_method = "cgroup";
-                        tracing::debug!("Set memory limit via cgroup: {} MB", memory_mb);
+                        tracing::debug!(
+                            "Set memory limit via cgroup: {} MB ({}% of system)",
+                            memory_bytes / 1024 / 1024,
+                            self.max_memory_percent.unwrap_or(0)
+                        );
                     }
                 }
 
@@ -138,8 +144,8 @@ impl ProcessLimits {
 
                     tracing::info!(
                         "Using resource limits: memory={} ({}), CPU={} ({})",
-                        self.max_memory_mb
-                            .map(|m| format!("{} MB", m))
+                        self.max_memory_percent
+                            .map(|p| format!("{}%", p))
                             .unwrap_or("unlimited".to_string()),
                         memory_method,
                         self.max_cpu_percent
@@ -177,8 +183,8 @@ impl ProcessLimits {
 
         tracing::info!(
             "Using resource limits: memory={} ({}), CPU={} ({})",
-            self.max_memory_mb
-                .map(|m| format!("{} MB", m))
+            self.max_memory_percent
+                .map(|p| format!("{}%", p))
                 .unwrap_or("unlimited".to_string()),
             memory_method,
             self.max_cpu_percent
@@ -377,7 +383,7 @@ mod tests {
         #[cfg(target_os = "linux")]
         {
             assert!(limits.enabled);
-            assert!(limits.max_memory_mb.is_some());
+            assert_eq!(limits.max_memory_percent, Some(50));
             assert_eq!(limits.max_cpu_percent, Some(90));
         }
 
@@ -391,14 +397,14 @@ mod tests {
     fn test_process_limits_unlimited() {
         let limits = ProcessLimits::unlimited();
         assert!(!limits.enabled);
-        assert_eq!(limits.max_memory_mb, None);
+        assert_eq!(limits.max_memory_percent, None);
         assert_eq!(limits.max_cpu_percent, None);
     }
 
     #[test]
     fn test_process_limits_serialization() {
         let limits = ProcessLimits {
-            max_memory_mb: Some(1024),
+            max_memory_percent: Some(50),
             max_cpu_percent: Some(80),
             enabled: true,
         };
@@ -445,37 +451,39 @@ mod tests {
 
     #[test]
     #[cfg(target_os = "linux")]
-    fn test_process_limits_default_memory_calculation() {
-        let default_memory = ProcessLimits::default_memory_limit_mb();
+    fn test_memory_limit_bytes_calculation() {
+        let limits = ProcessLimits {
+            max_memory_percent: Some(50),
+            max_cpu_percent: Some(90),
+            enabled: true,
+        };
 
-        // Should be able to determine system memory
-        assert!(default_memory.is_some());
+        let memory_bytes = limits.memory_limit_bytes();
 
-        if let Some(mem_mb) = default_memory {
-            // Should be reasonable (at least 1MB, less than 1TB)
-            assert!(mem_mb > 0);
-            assert!(mem_mb < 1_000_000);
+        // Should be able to compute memory limit
+        assert!(memory_bytes.is_some());
 
+        if let Some(bytes) = memory_bytes {
             // Should be approximately 50% of system memory
             let total_memory = SystemResources::total_memory_mb().unwrap();
-            let expected = total_memory / 2;
+            let expected_bytes = (total_memory / 2) * 1024 * 1024;
 
             // Allow for some rounding differences
-            assert!((mem_mb as i64 - expected as i64).abs() < 10);
+            assert!((bytes as i64 - expected_bytes as i64).abs() < 10 * 1024 * 1024);
         }
     }
 
     #[test]
     fn test_process_limits_json_with_null_memory() {
-        // Test that null memory value deserializes correctly and uses default
+        // Test that null memory value deserializes correctly
         let json = r#"{
-            "max_memory_mb": null,
+            "max_memory_percent": null,
             "max_cpu_percent": 90,
             "enabled": true
         }"#;
 
         let limits: ProcessLimits = serde_json::from_str(json).unwrap();
-        assert_eq!(limits.max_memory_mb, None);
+        assert_eq!(limits.max_memory_percent, None);
         assert_eq!(limits.max_cpu_percent, Some(90));
         assert!(limits.enabled);
     }
@@ -485,7 +493,7 @@ mod tests {
     async fn test_spawn_process_with_limits() {
         // Test that we can successfully spawn a process with limits applied
         let limits = ProcessLimits {
-            max_memory_mb: Some(100),
+            max_memory_percent: Some(10), // 10% of system memory
             max_cpu_percent: Some(50),
             enabled: true,
         };
@@ -526,7 +534,7 @@ mod tests {
     fn test_memory_limit_independent() {
         // Test that memory limits can be set independently
         let _limits = ProcessLimits {
-            max_memory_mb: Some(100),
+            max_memory_percent: Some(10),
             max_cpu_percent: None, // No CPU limit
             enabled: true,
         };

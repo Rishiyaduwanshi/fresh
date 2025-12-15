@@ -1123,7 +1123,7 @@
           "description": "Process resource limits (memory and CPU)",
           "$ref": "#/$defs/ProcessLimits",
           "default": {
-            "max_memory_mb": 3910,
+            "max_memory_percent": 50,
             "max_cpu_percent": 90,
             "enabled": true
           }
@@ -1140,13 +1140,13 @@
       "description": "Configuration for process resource limits",
       "type": "object",
       "properties": {
-        "max_memory_mb": {
-          "description": "Maximum memory usage in megabytes (None = no limit)",
+        "max_memory_percent": {
+          "description": "Maximum memory usage as percentage of total system memory (None = no limit)\nDefault is 50% of total system memory",
           "type": [
             "integer",
             "null"
           ],
-          "format": "uint64",
+          "format": "uint32",
           "minimum": 0,
           "default": null
         },
