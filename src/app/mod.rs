@@ -1779,24 +1779,40 @@ impl Editor {
                 }
             }
             Some("map") => {
-                // For Map controls: add new entry if on add-new row, or toggle expand if on entry
+                // For Map controls: enter editing mode, then handle navigation
                 if let Some(ref mut state) = self.settings_state {
-                    if let Some(item) = state.current_item_mut() {
-                        if let SettingControl::Map(ref mut map_state) = item.control {
-                            if map_state.focused_entry.is_none() {
-                                // On add-new row: add the entry
-                                map_state.add_entry_from_input();
-                            } else if let Some(idx) = map_state.focused_entry {
-                                // On entry row: toggle expanded
-                                if map_state.expanded.contains(&idx) {
-                                    map_state.expanded.retain(|&i| i != idx);
-                                } else {
-                                    map_state.expanded.push(idx);
+                    if !state.editing_text {
+                        // First Enter: enter editing mode
+                        state.start_editing();
+                        // If there are entries, focus on the first one
+                        if let Some(item) = state.current_item_mut() {
+                            if let SettingControl::Map(ref mut map_state) = item.control {
+                                if !map_state.entries.is_empty() {
+                                    map_state.focused_entry = Some(0);
+                                }
+                            }
+                        }
+                    } else {
+                        // Already in editing mode: handle entry actions
+                        if let Some(item) = state.current_item_mut() {
+                            if let SettingControl::Map(ref mut map_state) = item.control {
+                                if map_state.focused_entry.is_none() {
+                                    // On add-new row: add the entry (if text entered)
+                                    if !map_state.new_key_text.is_empty() {
+                                        map_state.add_entry_from_input();
+                                        state.on_value_changed();
+                                    }
+                                } else if let Some(idx) = map_state.focused_entry {
+                                    // On entry row: toggle expanded
+                                    if map_state.expanded.contains(&idx) {
+                                        map_state.expanded.retain(|&i| i != idx);
+                                    } else {
+                                        map_state.expanded.push(idx);
+                                    }
                                 }
                             }
                         }
                     }
-                    state.on_value_changed();
                 }
             }
             Some("text") => {

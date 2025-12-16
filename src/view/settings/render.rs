@@ -143,19 +143,19 @@ fn render_categories(
         }
 
         let is_selected = idx == state.selected_category;
+        let is_focused = is_selected && state.focus_panel == FocusPanel::Categories;
         let is_hovered = matches!(state.hover_hit, Some(SettingsHit::Category(i)) if i == idx);
         let row_area = Rect::new(area.x, area.y + idx as u16, area.width, 1);
 
         layout.add_category(idx, row_area);
 
-        let style = if is_selected {
-            if state.focus_panel == FocusPanel::Categories {
-                Style::default()
-                    .fg(theme.menu_highlight_fg)
-                    .bg(theme.menu_highlight_bg)
-            } else {
-                Style::default().fg(theme.menu_fg).bg(theme.selection_bg)
-            }
+        let style = if is_focused {
+            Style::default()
+                .fg(theme.menu_highlight_fg)
+                .bg(theme.menu_highlight_bg)
+        } else if is_selected {
+            // Selected but not focused - subtle highlight
+            Style::default().fg(theme.menu_fg).bg(theme.selection_bg)
         } else if is_hovered {
             // Hover highlight using menu hover colors
             Style::default()
@@ -165,9 +165,13 @@ fn render_categories(
             Style::default().fg(theme.popup_text_fg)
         };
 
-        // Indicator for categories with modified settings
+        // Build prefix: selection indicator + modified indicator
+        // Selection indicator: ▶ when focused, space otherwise
+        // Modified indicator: ● when has changes, space otherwise
         let has_changes = page.items.iter().any(|i| i.modified);
-        let prefix = if has_changes { "● " } else { "  " };
+        let selection_indicator = if is_focused { "▶" } else { " " };
+        let modified_indicator = if has_changes { "●" } else { " " };
+        let prefix = format!("{}{} ", selection_indicator, modified_indicator);
 
         let text = format!("{}{}", prefix, page.name);
         let line = Line::from(Span::styled(text, style));
@@ -324,7 +328,7 @@ fn render_setting_item_pure(
     // Draw selection or hover highlight background (for visible portion)
     if is_selected || is_item_hovered {
         let bg_style = if is_selected {
-            Style::default().bg(theme.current_line_bg)
+            Style::default().bg(theme.selection_bg)
         } else {
             Style::default().bg(theme.menu_hover_bg)
         };
@@ -334,10 +338,34 @@ fn render_setting_item_pure(
         }
     }
 
+    // Render selection indicator prefix (▶ for selected, space for others)
+    let indicator_width = 2u16;
+    if skip_top == 0 && area.width > indicator_width {
+        let indicator = if is_selected { "▶ " } else { "  " };
+        let indicator_style = Style::default().fg(theme.menu_highlight_fg);
+        let indicator_area = Rect::new(area.x, area.y, indicator_width, 1);
+        frame.render_widget(
+            Paragraph::new(indicator).style(indicator_style),
+            indicator_area,
+        );
+    }
+
+    // Adjust control area to account for indicator
+    let control_area = if area.width > indicator_width {
+        Rect::new(
+            area.x + indicator_width,
+            area.y,
+            area.width - indicator_width,
+            area.height,
+        )
+    } else {
+        area
+    };
+
     // All controls render their own label, so just render the control
     render_control(
         frame,
-        area,
+        control_area,
         &item.control,
         &item.name,
         item.modified,
