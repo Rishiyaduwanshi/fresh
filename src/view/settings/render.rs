@@ -728,10 +728,7 @@ fn render_map_partial(
             vec![
                 Span::styled(add_indicator, Style::default().fg(add_color)),
                 Span::styled("[+] ", Style::default().fg(colors.add_button)),
-                Span::styled(
-                    " ",
-                    Style::default().fg(Color::Black).bg(add_color),
-                ),
+                Span::styled(" ", Style::default().fg(Color::Black).bg(add_color)),
                 Span::styled("type name...", Style::default().fg(colors.key)),
             ]
         } else {

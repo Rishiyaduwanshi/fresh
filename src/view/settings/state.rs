@@ -883,18 +883,23 @@ impl SettingsState {
     /// Add new item in TextList/Map (from the new item field)
     pub fn text_add_item(&mut self) {
         // Capture info for event logging before mutation
-        let event_info: Option<(String, String, serde_json::Value)> = self.current_item().and_then(|item| {
-            if let SettingControl::Map(state) = &item.control {
-                if !state.new_key_text.is_empty() {
-                    // Key will be added with empty object as default value
-                    Some((item.path.clone(), state.new_key_text.clone(), serde_json::json!({})))
+        let event_info: Option<(String, String, serde_json::Value)> =
+            self.current_item().and_then(|item| {
+                if let SettingControl::Map(state) = &item.control {
+                    if !state.new_key_text.is_empty() {
+                        // Key will be added with empty object as default value
+                        Some((
+                            item.path.clone(),
+                            state.new_key_text.clone(),
+                            serde_json::json!({}),
+                        ))
+                    } else {
+                        None
+                    }
                 } else {
                     None
                 }
-            } else {
-                None
-            }
-        });
+            });
 
         if let Some(item) = self.current_item_mut() {
             match &mut item.control {
@@ -906,7 +911,8 @@ impl SettingsState {
 
         // Record event for undo/redo
         if let Some((path, key, value)) = event_info {
-            self.event_log.append(SettingsEvent::MapEntryAdd { path, key, value });
+            self.event_log
+                .append(SettingsEvent::MapEntryAdd { path, key, value });
         }
 
         // Record the change
@@ -916,16 +922,17 @@ impl SettingsState {
     /// Remove the currently focused item in TextList/Map
     pub fn text_remove_focused(&mut self) {
         // Capture info for event logging before mutation
-        let event_info: Option<(String, String, serde_json::Value)> = self.current_item().and_then(|item| {
-            if let SettingControl::Map(state) = &item.control {
-                if let Some(idx) = state.focused_entry {
-                    if let Some((key, value)) = state.entries.get(idx) {
-                        return Some((item.path.clone(), key.clone(), value.clone()));
+        let event_info: Option<(String, String, serde_json::Value)> =
+            self.current_item().and_then(|item| {
+                if let SettingControl::Map(state) = &item.control {
+                    if let Some(idx) = state.focused_entry {
+                        if let Some((key, value)) = state.entries.get(idx) {
+                            return Some((item.path.clone(), key.clone(), value.clone()));
+                        }
                     }
                 }
-            }
-            None
-        });
+                None
+            });
 
         if let Some(item) = self.current_item_mut() {
             match &mut item.control {
@@ -945,7 +952,8 @@ impl SettingsState {
 
         // Record event for undo/redo
         if let Some((path, key, value)) = event_info {
-            self.event_log.append(SettingsEvent::MapEntryRemove { path, key, value });
+            self.event_log
+                .append(SettingsEvent::MapEntryRemove { path, key, value });
         }
 
         // Record the change
@@ -956,7 +964,11 @@ impl SettingsState {
     /// Returns true if the event was successfully applied
     pub fn apply_event(&mut self, event: SettingsEvent) -> bool {
         match event {
-            SettingsEvent::MapEntryAdd { ref path, ref key, ref value } => {
+            SettingsEvent::MapEntryAdd {
+                ref path,
+                ref key,
+                ref value,
+            } => {
                 // Find the Map control at this path and add the entry
                 for page in &mut self.pages {
                     for item in &mut page.items {
@@ -971,13 +983,16 @@ impl SettingsState {
                 }
                 false
             }
-            SettingsEvent::MapEntryRemove { ref path, ref key, .. } => {
+            SettingsEvent::MapEntryRemove {
+                ref path, ref key, ..
+            } => {
                 // Find the Map control at this path and remove the entry by key
                 for page in &mut self.pages {
                     for item in &mut page.items {
                         if item.path == *path {
                             if let SettingControl::Map(state) = &mut item.control {
-                                if let Some(idx) = state.entries.iter().position(|(k, _)| k == key) {
+                                if let Some(idx) = state.entries.iter().position(|(k, _)| k == key)
+                                {
                                     state.remove_entry(idx);
                                     self.on_value_changed();
                                     return true;
@@ -988,7 +1003,11 @@ impl SettingsState {
                 }
                 false
             }
-            SettingsEvent::ValueChange { ref path, ref new_value, .. } => {
+            SettingsEvent::ValueChange {
+                ref path,
+                ref new_value,
+                ..
+            } => {
                 // For value changes, just update the pending change
                 self.set_pending_change(path, new_value.clone());
                 // TODO: Also update the control's visual state
