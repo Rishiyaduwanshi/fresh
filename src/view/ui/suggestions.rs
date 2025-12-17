@@ -1,5 +1,6 @@
 //! Autocomplete suggestions and command palette UI rendering
 
+use super::borders::get_border_set;
 use crate::input::commands::CommandSource;
 use crate::primitives::display_width::{char_width, str_width};
 use crate::view::prompt::Prompt;
@@ -30,8 +31,9 @@ impl SuggestionsRenderer {
         area: Rect,
         prompt: &Prompt,
         theme: &crate::view::theme::Theme,
+        advanced_unicode: bool,
     ) -> Option<(Rect, usize, usize, usize)> {
-        Self::render_with_hover(frame, area, prompt, theme, None)
+        Self::render_with_hover(frame, area, prompt, theme, None, advanced_unicode)
     }
 
     /// Render the suggestions popup with hover highlighting
@@ -44,6 +46,7 @@ impl SuggestionsRenderer {
         prompt: &Prompt,
         theme: &crate::view::theme::Theme,
         hover_target: Option<&crate::app::HoverTarget>,
+        advanced_unicode: bool,
     ) -> Option<(Rect, usize, usize, usize)> {
         if prompt.suggestions.is_empty() {
             return None;
@@ -52,6 +55,7 @@ impl SuggestionsRenderer {
         // Create a block with a border and background
         let block = Block::default()
             .borders(Borders::ALL)
+            .border_set(get_border_set(advanced_unicode))
             .border_style(Style::default().fg(theme.popup_border_fg))
             .style(Style::default().bg(theme.suggestion_bg));
 

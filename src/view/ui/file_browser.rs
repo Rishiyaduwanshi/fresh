@@ -6,6 +6,7 @@
 //! - File list with metadata
 //! - Scrollbar for long lists
 
+use super::borders::get_border_set;
 use super::scrollbar::{render_scrollbar, ScrollbarColors, ScrollbarState};
 use super::status_bar::truncate_path;
 use crate::app::file_open::{
@@ -39,6 +40,7 @@ impl FileBrowserRenderer {
         state: &FileOpenState,
         theme: &crate::view::theme::Theme,
         hover_target: &Option<crate::app::HoverTarget>,
+        advanced_unicode: bool,
     ) -> Option<FileBrowserLayout> {
         if area.height < 5 || area.width < 20 {
             return None;
@@ -74,6 +76,7 @@ impl FileBrowserRenderer {
         // Create the popup block with border
         let block = Block::default()
             .borders(Borders::ALL)
+            .border_set(get_border_set(advanced_unicode))
             .border_style(Style::default().fg(theme.popup_border_fg))
             .style(Style::default().bg(theme.popup_bg))
             .title(title_line);

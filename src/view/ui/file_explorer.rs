@@ -1,3 +1,4 @@
+use super::borders::get_border_set;
 use crate::primitives::display_width::str_width;
 use crate::view::file_tree::{FileTreeView, NodeId};
 use crate::view::theme::Theme;
@@ -26,6 +27,7 @@ impl FileExplorerRenderer {
         current_context: crate::input::keybindings::KeyContext,
         theme: &Theme,
         close_button_hovered: bool,
+        advanced_unicode: bool,
     ) {
         // Update viewport height for scrolling calculations
         // Account for borders (top + bottom = 2)
@@ -96,6 +98,7 @@ impl FileExplorerRenderer {
             .block(
                 Block::default()
                     .borders(Borders::ALL)
+                    .border_set(get_border_set(advanced_unicode))
                     .title(title)
                     .title_style(title_style)
                     .border_style(border_style)

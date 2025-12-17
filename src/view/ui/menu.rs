@@ -1,5 +1,6 @@
 //! Menu bar rendering
 
+use super::borders::get_border_set;
 use crate::config::{Menu, MenuConfig, MenuItem};
 use crate::view::theme::Theme;
 use ratatui::layout::Rect;
@@ -360,6 +361,7 @@ impl MenuRenderer {
         keybindings: &crate::input::keybindings::KeybindingResolver,
         theme: &Theme,
         hover_target: Option<&crate::app::HoverTarget>,
+        advanced_unicode: bool,
     ) {
         // Combine config menus with plugin menus
         let all_menus: Vec<&Menu> = menu_config
@@ -436,6 +438,7 @@ impl MenuRenderer {
                     keybindings,
                     theme,
                     hover_target,
+                    advanced_unicode,
                 );
             }
         }
@@ -452,6 +455,7 @@ impl MenuRenderer {
         keybindings: &crate::input::keybindings::KeybindingResolver,
         theme: &Theme,
         hover_target: Option<&crate::app::HoverTarget>,
+        advanced_unicode: bool,
     ) {
         // Calculate the x position of the top-level dropdown based on menu index
         let mut x_offset = 0usize;
@@ -496,6 +500,7 @@ impl MenuRenderer {
                 theme,
                 hover_target,
                 &menu_state.context,
+                advanced_unicode,
             );
 
             // If not at the deepest level, navigate into the submenu for next iteration
@@ -555,6 +560,7 @@ impl MenuRenderer {
         theme: &Theme,
         hover_target: Option<&crate::app::HoverTarget>,
         context: &MenuContext,
+        advanced_unicode: bool,
     ) -> Rect {
         let max_width = Self::calculate_dropdown_width(items);
         let dropdown_height = items.len() + 2; // +2 for borders
@@ -711,6 +717,7 @@ impl MenuRenderer {
 
         let block = Block::default()
             .borders(Borders::ALL)
+            .border_set(get_border_set(advanced_unicode))
             .border_style(Style::default().fg(theme.menu_border_fg))
             .style(Style::default().bg(theme.menu_dropdown_bg));
 

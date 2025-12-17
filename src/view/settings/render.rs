@@ -12,6 +12,7 @@ use crate::view::controls::{
     TextListColors, ToggleColors,
 };
 use crate::view::theme::Theme;
+use crate::view::ui::borders::get_border_set;
 use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
@@ -24,6 +25,7 @@ pub fn render_settings(
     area: Rect,
     state: &mut SettingsState,
     theme: &Theme,
+    advanced_unicode: bool,
 ) -> SettingsLayout {
     // Calculate modal size (80% of screen, max 100 wide, 40 tall)
     let modal_width = (area.width * 80 / 100).min(100);
@@ -45,6 +47,7 @@ pub fn render_settings(
     let block = Block::default()
         .title(title)
         .borders(Borders::ALL)
+        .border_set(get_border_set(advanced_unicode))
         .border_style(Style::default().fg(theme.popup_border_fg))
         .style(Style::default().bg(theme.popup_bg));
     frame.render_widget(block, modal_area);
@@ -128,7 +131,7 @@ pub fn render_settings(
         if !has_entry && !has_help {
             crate::view::dimming::apply_dimming(frame, modal_area);
         }
-        render_confirm_dialog(frame, modal_area, state, theme);
+        render_confirm_dialog(frame, modal_area, state, theme, advanced_unicode);
     }
 
     // Render entry detail dialog if showing
@@ -144,7 +147,7 @@ pub fn render_settings(
     if has_help {
         // Help is topmost, dim everything below
         crate::view::dimming::apply_dimming(frame, modal_area);
-        render_help_overlay(frame, modal_area, theme);
+        render_help_overlay(frame, modal_area, theme, advanced_unicode);
     }
 
     layout
@@ -1349,6 +1352,7 @@ fn render_confirm_dialog(
     parent_area: Rect,
     state: &SettingsState,
     theme: &Theme,
+    advanced_unicode: bool,
 ) {
     // Calculate dialog size
     let changes = state.get_change_descriptions();
@@ -1370,6 +1374,7 @@ fn render_confirm_dialog(
     let block = Block::default()
         .title(" Unsaved Changes ")
         .borders(Borders::ALL)
+        .border_set(get_border_set(advanced_unicode))
         .border_style(Style::default().fg(theme.diagnostic_warning_fg))
         .style(Style::default().bg(theme.popup_bg));
     frame.render_widget(block, dialog_area);
@@ -1843,7 +1848,7 @@ fn render_dialog_text_field(
 }
 
 /// Render the help overlay showing keyboard shortcuts
-fn render_help_overlay(frame: &mut Frame, parent_area: Rect, theme: &Theme) {
+fn render_help_overlay(frame: &mut Frame, parent_area: Rect, theme: &Theme, advanced_unicode: bool) {
     // Define the help content
     let help_items = [
         (
@@ -1889,6 +1894,7 @@ fn render_help_overlay(frame: &mut Frame, parent_area: Rect, theme: &Theme) {
     let block = Block::default()
         .title(" Keyboard Shortcuts ")
         .borders(Borders::ALL)
+        .border_set(get_border_set(advanced_unicode))
         .border_style(Style::default().fg(theme.menu_highlight_fg))
         .style(Style::default().bg(theme.popup_bg));
     frame.render_widget(block, dialog_area);

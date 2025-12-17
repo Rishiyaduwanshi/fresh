@@ -138,6 +138,7 @@ impl Editor {
                     self.key_context,
                     &self.theme,
                     close_button_hovered,
+                    self.config.editor.advanced_unicode,
                 );
             }
             // Note: if file_explorer is None but sync_in_progress is true,
@@ -375,6 +376,7 @@ impl Editor {
                         file_open_state,
                         &self.theme,
                         &self.mouse_state.hover_target,
+                        self.config.editor.advanced_unicode,
                     );
                 }
             } else if !prompt.suggestions.is_empty() {
@@ -401,6 +403,7 @@ impl Editor {
                     prompt,
                     &self.theme,
                     self.mouse_state.hover_target.as_ref(),
+                    self.config.editor.advanced_unicode,
                 );
             }
         }
@@ -677,6 +680,7 @@ impl Editor {
                     size,
                     settings_state,
                     &self.theme,
+                    self.config.editor.advanced_unicode,
                 );
                 self.cached_layout.settings_layout = Some(settings_layout);
             }
@@ -690,6 +694,7 @@ impl Editor {
             &self.keybindings,
             &self.theme,
             self.mouse_state.hover_target.as_ref(),
+            self.config.editor.advanced_unicode,
         );
 
         // Render software mouse cursor when GPM is active
