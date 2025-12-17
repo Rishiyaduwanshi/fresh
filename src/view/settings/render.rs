@@ -1848,7 +1848,12 @@ fn render_dialog_text_field(
 }
 
 /// Render the help overlay showing keyboard shortcuts
-fn render_help_overlay(frame: &mut Frame, parent_area: Rect, theme: &Theme, advanced_unicode: bool) {
+fn render_help_overlay(
+    frame: &mut Frame,
+    parent_area: Rect,
+    theme: &Theme,
+    advanced_unicode: bool,
+) {
     // Define the help content
     let help_items = [
         (
