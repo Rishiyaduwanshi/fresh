@@ -1524,6 +1524,28 @@ struct TsBufferSavedDiff {
     line_ranges: Option<Vec<(u32, u32)>>,
 }
 
+/// Line diff result for plugins
+#[derive(serde::Serialize)]
+struct TsLineDiff {
+    equal: bool,
+    changed_lines: Vec<(u32, u32)>,
+}
+
+/// Compute line diff between two strings
+#[op2]
+#[serde]
+fn op_fresh_diff_lines(#[string] original: String, #[string] modified: String) -> TsLineDiff {
+    let diff = crate::model::line_diff::diff_lines(original.as_bytes(), modified.as_bytes());
+    TsLineDiff {
+        equal: diff.equal,
+        changed_lines: diff
+            .changed_lines
+            .iter()
+            .map(|r| (r.start as u32, r.end as u32))
+            .collect(),
+    }
+}
+
 /// Selection range
 #[derive(serde::Serialize)]
 struct TsSelectionRange {
@@ -2645,6 +2667,25 @@ fn op_fresh_set_split_buffer(state: &mut OpState, split_id: u32, buffer_id: u32)
     false
 }
 
+/// Set the scroll position of a specific split
+/// @param split_id - The split ID
+/// @param top_byte - The byte offset of the top visible line
+/// @returns true if successful
+#[op2(fast)]
+fn op_fresh_set_split_scroll(state: &mut OpState, split_id: u32, top_byte: u32) -> bool {
+    if let Some(runtime_state) = state.try_borrow::<Rc<RefCell<TsRuntimeState>>>() {
+        let runtime_state = runtime_state.borrow();
+        let result = runtime_state
+            .command_sender
+            .send(PluginCommand::SetSplitScroll {
+                split_id: crate::model::event::SplitId(split_id as usize),
+                top_byte: top_byte as usize,
+            });
+        return result.is_ok();
+    }
+    false
+}
+
 /// Close a split (if not the last one)
 /// @param split_id - ID of the split to close
 /// @returns true if the split was closed successfully
@@ -2872,10 +2913,10 @@ extension!(
         op_fresh_send_lsp_request,
         op_fresh_define_mode,
         op_fresh_show_buffer,
-        op_fresh_close_buffer,
-        op_fresh_focus_split,
         op_fresh_set_split_buffer,
+        op_fresh_set_split_scroll,
         op_fresh_close_split,
+        op_fresh_focus_split,
         op_fresh_set_split_ratio,
         op_fresh_distribute_splits_evenly,
         op_fresh_set_buffer_cursor,

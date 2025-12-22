@@ -671,6 +671,20 @@ interface EditorAPI {
    * @returns true if the command was sent successfully
    */
   setBufferCursor(buffer_id: number, position: number): boolean;
+  /**
+   * Set the scroll position of a specific split
+   * @param split_id - The split ID
+   * @param top_byte - The byte offset of the top visible line
+   * @returns true if successful
+   */
+  setSplitScroll(split_id: number, top_byte: number): boolean;
+  /**
+   * Compute line diff between two strings
+   * @param original - Original text
+   * @param modified - Modified text
+   * @returns Line diff result
+   */
+  diffLines(original: string, modified: string): { equal: boolean, changed_lines: [number, number][] };
 
   // === Async Operations ===
   /**
@@ -979,13 +993,8 @@ interface EditorAPI {
    * @param bindings - Array of [key_string, command_name] pairs
    * @param read_only - Whether buffers in this mode are read-only
    * @returns true if mode was defined successfully
-   * @example
-   * editor.defineMode("diagnostics-list", "special", [
-   * ["Return", "diagnostics_goto"],
-   * ["q", "close_buffer"]
-   * ], true);
    */
-  defineMode(name: string, parent?: string | null, bindings: Vec<(String, String): boolean;
+  defineMode(name: string, parent: string | null, bindings: [string, string][], read_only: boolean): boolean;
   /**
    * Switch the current split to display a buffer
    * @param buffer_id - ID of the buffer to show

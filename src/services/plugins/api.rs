@@ -573,6 +573,9 @@ pub enum PluginCommand {
         buffer_id: BufferId,
     },
 
+    /// Set the scroll position of a specific split
+    SetSplitScroll { split_id: SplitId, top_byte: usize },
+
     /// Close a split (if not the last one)
     CloseSplit { split_id: SplitId },
 
@@ -926,6 +929,14 @@ impl PluginApi {
     /// Switch the current split to display a buffer
     pub fn show_buffer(&self, buffer_id: BufferId) -> Result<(), String> {
         self.send_command(PluginCommand::ShowBuffer { buffer_id })
+    }
+
+    /// Set the scroll position of a specific split
+    pub fn set_split_scroll(&self, split_id: usize, top_byte: usize) -> Result<(), String> {
+        self.send_command(PluginCommand::SetSplitScroll {
+            split_id: SplitId(split_id),
+            top_byte,
+        })
     }
 
     // === Query Methods ===
