@@ -130,6 +130,12 @@ interface TsBufferSavedDiff {
   line_ranges?: [number, number][] | null;
 }
 
+/** Line diff result for plugins */
+interface TsLineDiff {
+  equal: boolean;
+  changed_lines: [number, number][];
+}
+
 /** Selection range */
 interface SelectionRange {
   /** Start byte position */
@@ -635,6 +641,8 @@ interface EditorAPI {
    * @returns true if process was killed, false if not found
    */
   killProcess(#[bigint] process_id: number): Promise<boolean>;
+  /** Compute line diff between two strings */
+  diffLines(original: string, modified: string): TsLineDiff;
   /**
    * Start a prompt with pre-filled initial value
    * @param label - Label to display (e.g., "Git grep: ")
@@ -651,6 +659,13 @@ interface EditorAPI {
    * @returns Promise resolving to the JSON response value
    */
   sendLspRequest(language: string, method: string, params?: unknown | null): Promise<unknown>;
+  /**
+   * Set the scroll position of a specific split
+   * @param split_id - The split ID
+   * @param top_byte - The byte offset of the top visible line
+   * @returns true if successful
+   */
+  setSplitScroll(split_id: number, top_byte: number): boolean;
   /**
    * Set the ratio of a split container
    * @param split_id - ID of the split
@@ -671,20 +686,6 @@ interface EditorAPI {
    * @returns true if the command was sent successfully
    */
   setBufferCursor(buffer_id: number, position: number): boolean;
-  /**
-   * Set the scroll position of a specific split
-   * @param split_id - The split ID
-   * @param top_byte - The byte offset of the top visible line
-   * @returns true if successful
-   */
-  setSplitScroll(split_id: number, top_byte: number): boolean;
-  /**
-   * Compute line diff between two strings
-   * @param original - Original text
-   * @param modified - Modified text
-   * @returns Line diff result
-   */
-  diffLines(original: string, modified: string): { equal: boolean, changed_lines: [number, number][] };
 
   // === Async Operations ===
   /**
@@ -719,15 +720,12 @@ interface EditorAPI {
    * @param r - Red (0-255)
    * @param g - Green (0-255)
    * @param b - Blue (0-255)
-   * @param bg_r - Background Red (0-255, -1 for none)
-   * @param bg_g - Background Green (0-255, -1 for none)
-   * @param bg_b - Background Blue (0-255, -1 for none)
    * @param underline - Add underline decoration
    * @param bold - Use bold text
    * @param italic - Use italic text
    * @returns true if overlay was added
    */
-  addOverlay(buffer_id: number, namespace: string, start: number, end: number, r: number, g: number, b: number, bg_r: number, bg_g: number, bg_b: number, underline: boolean, bold: boolean, italic: boolean): boolean;
+  addOverlay(buffer_id: number, namespace: string, start: number, end: number, r: number, g: number, b: number, bg_r: i16, bg_g: i16, bg_b: i16, underline: boolean, bold: boolean, italic: boolean): boolean;
   /**
    * Remove a specific overlay by its handle
    * @param buffer_id - The buffer ID
@@ -996,8 +994,13 @@ interface EditorAPI {
    * @param bindings - Array of [key_string, command_name] pairs
    * @param read_only - Whether buffers in this mode are read-only
    * @returns true if mode was defined successfully
+   * @example
+   * editor.defineMode("diagnostics-list", "special", [
+   * ["Return", "diagnostics_goto"],
+   * ["q", "close_buffer"]
+   * ], true);
    */
-  defineMode(name: string, parent: string | null, bindings: [string, string][], read_only: boolean): boolean;
+  defineMode(name: string, parent?: string | null, bindings: Vec<(String, String): boolean;
   /**
    * Switch the current split to display a buffer
    * @param buffer_id - ID of the buffer to show
