@@ -41,6 +41,9 @@ const state: ReviewState = {
   reviewBufferId: null,
 };
 
+// --- Refresh State ---
+let isUpdating = false;
+
 // --- Colors & Styles ---
 const STYLE_BORDER: [number, number, number] = [70, 70, 70]; 
 const STYLE_HEADER: [number, number, number] = [120, 120, 255]; 
@@ -51,6 +54,8 @@ const STYLE_ADD_TEXT: [number, number, number] = [150, 255, 150]; // Very Bright
 const STYLE_REMOVE_TEXT: [number, number, number] = [255, 150, 150]; // Very Bright Red
 const STYLE_STAGED: [number, number, number] = [100, 100, 100]; 
 const STYLE_DISCARDED: [number, number, number] = [120, 60, 60];
+
+const encoder = new TextEncoder();
 
 /**
  * Calculate UTF-8 byte length of a string manually since TextEncoder is not available
@@ -175,17 +180,17 @@ function renderReviewStream(): { entries: TextPropertyEntry[], highlights: Highl
   // Exact Byte Constants
   const BOX_PIPE_BYTES = 3; // "│"
   const BOX_DR_BYTES = 3;   // "┌"
-  const BOX_DL_BYTES = 3;   // "└"
   const BOX_HORIZ_BYTES = 3; // "─"
 
   state.hunks.forEach((hunk, hunkIndex) => {
     if (hunk.file !== currentFile) {
-      const titleLine = `┌─ ${hunk.file} ${"─".repeat(Math.max(0, 60 - hunk.file.length))}\n`;
+      const titlePrefix = "┌─ ";
+      const titleLine = `${titlePrefix}${hunk.file} ${"─".repeat(Math.max(0, 60 - hunk.file.length))}\n`;
       const titleLen = getByteLength(titleLine);
       entries.push({ text: titleLine, properties: { type: "banner", file: hunk.file } });
       highlights.push({ range: [currentByte, currentByte + titleLen], fg: STYLE_BORDER });
-      const filenameOffset = BOX_DR_BYTES + 1; // "┌─ "
-      highlights.push({ range: [currentByte + filenameOffset, currentByte + filenameOffset + getByteLength(hunk.file)], fg: STYLE_FILE_NAME, bold: true });
+      const prefixLen = getByteLength(titlePrefix);
+      highlights.push({ range: [currentByte + prefixLen, currentByte + prefixLen + getByteLength(hunk.file)], fg: STYLE_FILE_NAME, bold: true });
       currentByte += titleLen;
       currentFile = hunk.file;
     }
@@ -193,7 +198,8 @@ function renderReviewStream(): { entries: TextPropertyEntry[], highlights: Highl
     hunk.byteOffset = currentByte;
 
     const statusIcon = hunk.status === 'staged' ? '✓' : (hunk.status === 'discarded' ? '✗' : ' ');
-    const headerText = `│ ${statusIcon} [ ${hunk.contextHeader} ]\n`;
+    const headerPrefix = "│ ";
+    const headerText = `${headerPrefix}${statusIcon} [ ${hunk.contextHeader} ]\n`;
     const headerLen = getByteLength(headerText);
     let hunkColor = STYLE_HEADER;
     if (hunk.status === 'staged') hunkColor = STYLE_STAGED;
@@ -201,9 +207,9 @@ function renderReviewStream(): { entries: TextPropertyEntry[], highlights: Highl
 
     entries.push({ text: headerText, properties: { type: "header", hunkId: hunk.id, index: hunkIndex } });
     highlights.push({ range: [currentByte, currentByte + headerLen], fg: STYLE_BORDER });
-    const statusOffset = BOX_PIPE_BYTES + 1; // "│ "
-    highlights.push({ range: [currentByte + statusOffset, currentByte + statusOffset + getByteLength(statusIcon)], fg: hunkColor, bold: true });
-    highlights.push({ range: [currentByte + statusOffset + 3, currentByte + headerLen - 3], fg: hunkColor });
+    const headerPrefixLen = getByteLength(headerPrefix);
+    highlights.push({ range: [currentByte + headerPrefixLen, currentByte + headerPrefixLen + getByteLength(statusIcon)], fg: hunkColor, bold: true });
+    highlights.push({ range: [currentByte + headerPrefixLen + getByteLength(statusIcon) + 3, currentByte + headerLen - 3], fg: hunkColor });
     currentByte += headerLen;
 
     for (let i = 0; i < hunk.lines.length; i++) {
@@ -211,8 +217,8 @@ function renderReviewStream(): { entries: TextPropertyEntry[], highlights: Highl
         const nextLine = hunk.lines[i + 1];
         const marker = line[0];
         const content = line.substring(1);
-        const linePrefix = `│   ${marker} `; // "│" (3) + " " (1) + " " (1) + " " (1) + marker (1) + " " (1) = 8 bytes
-        const lineText = `${linePrefix}${content}\n`;
+        const linePrefix = "│   ";
+        const lineText = `${linePrefix}${marker} ${content}\n`;
         const lineLen = getByteLength(lineText);
         const prefixLen = getByteLength(linePrefix);
 
@@ -224,8 +230,9 @@ function renderReviewStream(): { entries: TextPropertyEntry[], highlights: Highl
             // Removed
             entries.push({ text: lineText, properties: { type: "content", hunkId: hunk.id } });
             highlights.push({ range: [currentByte, currentByte + lineLen], fg: STYLE_BORDER });
-            highlights.push({ range: [currentByte + prefixLen - 2, currentByte + prefixLen - 1], fg: STYLE_REMOVE_TEXT, bold: true });
-            let cbOffset = currentByte + prefixLen;
+            highlights.push({ range: [currentByte + prefixLen, currentByte + prefixLen + 1], fg: STYLE_REMOVE_TEXT, bold: true });
+            
+            let cbOffset = currentByte + prefixLen + 2; 
             diffParts.forEach(p => {
                 const pLen = getByteLength(p.text);
                 if (p.type === 'removed') {
@@ -239,12 +246,13 @@ function renderReviewStream(): { entries: TextPropertyEntry[], highlights: Highl
             currentByte += lineLen;
 
             // Added
-            const nextLineText = `│   + ${nextLine.substring(1)}\n`;
+            const nextLineText = `${linePrefix}+ ${nextLine.substring(1)}\n`;
             const nextLineLen = getByteLength(nextLineText);
             entries.push({ text: nextLineText, properties: { type: "content", hunkId: hunk.id } });
             highlights.push({ range: [currentByte, currentByte + nextLineLen], fg: STYLE_BORDER });
-            highlights.push({ range: [currentByte + prefixLen - 2, currentByte + prefixLen - 1], fg: STYLE_ADD_TEXT, bold: true });
-            cbOffset = currentByte + prefixLen;
+            highlights.push({ range: [currentByte + prefixLen, currentByte + prefixLen + 1], fg: STYLE_ADD_TEXT, bold: true });
+
+            cbOffset = currentByte + prefixLen + 2; 
             diffParts.forEach(p => {
                 const pLen = getByteLength(p.text);
                 if (p.type === 'added') {
@@ -262,11 +270,11 @@ function renderReviewStream(): { entries: TextPropertyEntry[], highlights: Highl
             highlights.push({ range: [currentByte, currentByte + lineLen], fg: STYLE_BORDER });
             if (hunk.status === 'pending') {
                 if (line.startsWith('+')) {
-                    highlights.push({ range: [currentByte + prefixLen - 2, currentByte + prefixLen - 1], fg: STYLE_ADD_TEXT, bold: true });
-                    highlights.push({ range: [currentByte + prefixLen, currentByte + lineLen], fg: STYLE_ADD_TEXT });
+                    highlights.push({ range: [currentByte + prefixLen, currentByte + prefixLen + 1], fg: STYLE_ADD_TEXT, bold: true });
+                    highlights.push({ range: [currentByte + prefixLen + 2, currentByte + lineLen], fg: STYLE_ADD_TEXT });
                 } else if (line.startsWith('-')) {
-                    highlights.push({ range: [currentByte + prefixLen - 2, currentByte + prefixLen - 1], fg: STYLE_REMOVE_TEXT, bold: true });
-                    highlights.push({ range: [currentByte + prefixLen, currentByte + lineLen], fg: STYLE_REMOVE_TEXT });
+                    highlights.push({ range: [currentByte + prefixLen, currentByte + prefixLen + 1], fg: STYLE_REMOVE_TEXT, bold: true });
+                    highlights.push({ range: [currentByte + prefixLen + 2, currentByte + lineLen], fg: STYLE_REMOVE_TEXT });
                 }
             } else {
                 highlights.push({ range: [currentByte + prefixLen, currentByte + lineLen], fg: hunkColor });
@@ -289,18 +297,34 @@ function renderReviewStream(): { entries: TextPropertyEntry[], highlights: Highl
   return { entries, highlights };
 }
 
-function applyReviewHighlights() {
+/**
+ * Updates the buffer UI (text and highlights) based on current state.hunks
+ */
+function updateReviewUI() {
   if (state.reviewBufferId !== null) {
-    const { highlights } = renderReviewStream();
+    const { entries, highlights } = renderReviewStream();
+    editor.setVirtualBufferContent(state.reviewBufferId, entries);
+    
     editor.clearNamespace(state.reviewBufferId, "review-diff");
     highlights.forEach((h) => {
         const bg = h.bg || [-1, -1, -1];
-        editor.addOverlay(state.reviewBufferId!, "review-diff", h.range[0], h.range[1], h.fg[0], h.fg[1], h.fg[2], bg[0], bg[1], bg[2], false, h.bold || false, false);
+        editor.addOverlay(
+            state.reviewBufferId!,
+            "review-diff", 
+            h.range[0], 
+            h.range[1], 
+            h.fg[0], h.fg[1], h.fg[2], 
+            bg[0], bg[1], bg[2], 
+            false, h.bold || false, false
+        );
     });
   }
 }
 
-async function refreshReviewStream() {
+/**
+ * Fetches latest diff data and refreshes the UI
+ */
+async function refreshReviewData() {
     if (isUpdating) return;
     isUpdating = true;
     editor.setStatus("Refreshing review diff...");
@@ -308,9 +332,7 @@ async function refreshReviewStream() {
         const newHunks = await getGitDiff();
         newHunks.forEach(h => h.status = state.hunkStatus[h.id] || 'pending');
         state.hunks = newHunks;
-        const { entries } = renderReviewStream();
-        editor.setVirtualBufferContent(state.reviewBufferId!, entries);
-        applyReviewHighlights();
+        updateReviewUI();
         editor.setStatus(`Review diff updated. Found ${state.hunks.length} hunks.`);
     } catch (e) {
         editor.debug(`ReviewDiff Error: ${e}`);
@@ -328,7 +350,7 @@ globalThis.review_stage_hunk = () => {
         state.hunkStatus[id] = 'staged';
         const h = state.hunks.find(x => x.id === id);
         if (h) h.status = 'staged';
-        refreshReviewStream();
+        updateReviewUI();
     }
 };
 
@@ -339,7 +361,7 @@ globalThis.review_discard_hunk = () => {
         state.hunkStatus[id] = 'discarded';
         const h = state.hunks.find(x => x.id === id);
         if (h) h.status = 'discarded';
-        refreshReviewStream();
+        updateReviewUI();
     }
 };
 
@@ -350,7 +372,7 @@ globalThis.review_undo_action = () => {
         state.hunkStatus[id] = 'pending';
         const h = state.hunks.find(x => x.id === id);
         if (h) h.status = 'pending';
-        refreshReviewStream();
+        updateReviewUI();
     }
 };
 
@@ -370,7 +392,7 @@ globalThis.review_prev_hunk = () => {
     if (cur - 1 >= 0) editor.setBufferCursor(bid, state.hunks[cur - 1].byteOffset);
 };
 
-globalThis.review_refresh = () => { refreshReviewStream(); };
+globalThis.review_refresh = () => { refreshReviewData(); };
 
 let activeDiffView: { lSplit: number, rSplit: number } | null = null;
 
@@ -390,7 +412,6 @@ globalThis.review_drill_down = async () => {
         const gitShow = await editor.spawnProcess("git", ["show", `HEAD:${h.file}`]);
         if (gitShow.exit_code !== 0) return;
         editor.openFile(h.file, h.range.start, 0);
-        const rBid = editor.getActiveBufferId();
         const rSid = (editor as any).getActiveSplitId();
         const lRes = await editor.createVirtualBufferInSplit({
             name: `HEAD:${h.file}`, mode: "special", read_only: true, entries: [{ text: gitShow.stdout, properties: {} }],
@@ -404,14 +425,19 @@ globalThis.review_drill_down = async () => {
 globalThis.start_review_diff = async () => {
     editor.setStatus("Generating Review Diff Stream...");
     editor.setContext("review-mode", true);
-    await refreshReviewStream();
+    
+    // Initial data fetch
+    const newHunks = await getGitDiff();
+    state.hunks = newHunks;
+
     const bufferId = await VirtualBufferFactory.create({
         name: "*Review Diff*", mode: "review-mode", read_only: true,
         entries: renderReviewStream().entries, showLineNumbers: false
     });
     state.reviewBufferId = bufferId;
-    applyReviewHighlights();
-    editor.setStatus(`Review Diff Mode Active. Press 'r' to refresh.`);
+    updateReviewUI(); // Apply initial highlights
+    
+    editor.setStatus(`Review Diff Mode Active. Found ${state.hunks.length} hunks. Press 'r' to refresh.`);
     editor.on("buffer_activated", "on_review_buffer_activated");
     editor.on("buffer_closed", "on_review_buffer_closed");
 };
@@ -425,13 +451,14 @@ globalThis.stop_review_diff = () => {
 };
 
 globalThis.on_review_buffer_activated = (data: any) => {
-    if (data.buffer_id === state.reviewBufferId) refreshReviewStream();
+    if (data.buffer_id === state.reviewBufferId) refreshReviewData();
 };
 
 globalThis.on_review_buffer_closed = (data: any) => {
     if (data.buffer_id === state.reviewBufferId) stop_review_diff();
 };
 
+// Register Modes and Commands
 editor.registerCommand("Review Diff", "Start code review session", "start_review_diff", "global");
 editor.registerCommand("Stop Review Diff", "Stop the review session", "stop_review_diff", "review-mode");
 editor.registerCommand("Refresh Review Diff", "Refresh the list of changes", "review_refresh", "review-mode");
