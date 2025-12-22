@@ -240,9 +240,9 @@ impl MenuState {
             return;
         }
 
-        // Skip separators
+        // Skip separators and disabled items
         let mut next = (idx + 1) % items.len();
-        while matches!(items[next], MenuItem::Separator { .. }) && next != idx {
+        while next != idx && self.should_skip_item(&items[next]) {
             next = (next + 1) % items.len();
         }
         self.highlighted_item = Some(next);
@@ -263,13 +263,28 @@ impl MenuState {
             return;
         }
 
-        // Skip separators
+        // Skip separators and disabled items
         let total = items.len();
         let mut prev = (idx + total - 1) % total;
-        while matches!(items[prev], MenuItem::Separator { .. }) && prev != idx {
+        while prev != idx && self.should_skip_item(&items[prev]) {
             prev = (prev + total - 1) % total;
         }
         self.highlighted_item = Some(prev);
+    }
+
+    /// Check if a menu item should be skipped during navigation
+    fn should_skip_item(&self, item: &MenuItem) -> bool {
+        match item {
+            MenuItem::Separator { .. } => true,
+            MenuItem::Action { when, .. } => {
+                // Skip disabled items (when condition evaluates to false)
+                match when.as_deref() {
+                    Some(condition) => !self.context.get(condition),
+                    None => false, // No condition means enabled, don't skip
+                }
+            }
+            _ => false,
+        }
     }
 
     /// Get the currently highlighted action (if any)
@@ -281,8 +296,9 @@ impl MenuState {
         let active_menu = self.active_menu?;
         let highlighted_item = self.highlighted_item?;
 
-        // Get the items at the current submenu level
-        let items = self.get_current_items(menus, active_menu)?;
+        // Get the items at the current submenu level, handling DynamicSubmenu
+        let menu = menus.get(active_menu)?;
+        let items = self.get_current_items_cloned(menu)?;
         let item = items.get(highlighted_item)?;
 
         match item {
@@ -306,7 +322,11 @@ impl MenuState {
             return false;
         };
 
-        let Some(items) = self.get_current_items(menus, active_menu) else {
+        // Use get_current_items_cloned to handle DynamicSubmenu
+        let Some(menu) = menus.get(active_menu) else {
+            return false;
+        };
+        let Some(items) = self.get_current_items_cloned(menu) else {
             return false;
         };
 
