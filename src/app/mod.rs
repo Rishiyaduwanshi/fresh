@@ -3635,11 +3635,11 @@ impl Editor {
         }
     }
 
-    /// Start copy with formatting - opens theme selection prompt
+    /// Copy selection with a specific theme's formatting
     ///
-    /// This opens a prompt to select a theme, then copies the selected text as HTML
-    /// with inline CSS styles using that theme's colors.
-    pub fn copy_selection_with_formatting(&mut self) {
+    /// If theme_name is empty, opens a prompt to select a theme.
+    /// Otherwise, copies the selected text as HTML with inline CSS styles.
+    pub fn copy_selection_with_theme(&mut self, theme_name: &str) {
         // Check if there's a selection first
         let has_selection = {
             let state = self.active_state();
@@ -3654,59 +3654,11 @@ impl Editor {
             return;
         }
 
-        // Open theme selection prompt
-        self.start_copy_with_formatting_prompt();
-    }
-
-    /// Start the theme selection prompt for copy with formatting
-    fn start_copy_with_formatting_prompt(&mut self) {
-        use crate::view::prompt::PromptType;
-
-        let available_themes = crate::view::theme::Theme::available_themes();
-        let current_theme_name = &self.theme.name;
-
-        // Find the index of the current theme
-        let current_index = available_themes
-            .iter()
-            .position(|name| name == current_theme_name)
-            .unwrap_or(0);
-
-        let suggestions: Vec<crate::input::commands::Suggestion> = available_themes
-            .iter()
-            .map(|theme_name| {
-                let is_current = theme_name == current_theme_name;
-                crate::input::commands::Suggestion {
-                    text: theme_name.to_string(),
-                    description: if is_current {
-                        Some("(current)".to_string())
-                    } else {
-                        None
-                    },
-                    value: Some(theme_name.to_string()),
-                    disabled: false,
-                    keybinding: None,
-                    source: None,
-                }
-            })
-            .collect();
-
-        self.prompt = Some(crate::view::prompt::Prompt::with_suggestions(
-            "Copy with theme: ".to_string(),
-            PromptType::CopyWithFormattingTheme,
-            suggestions,
-        ));
-
-        if let Some(prompt) = self.prompt.as_mut() {
-            if !prompt.suggestions.is_empty() {
-                prompt.selected_suggestion = Some(current_index);
-                prompt.input = current_theme_name.to_string();
-                prompt.cursor_pos = prompt.input.len();
-            }
+        // Empty theme = open theme picker prompt
+        if theme_name.is_empty() {
+            self.start_copy_with_formatting_prompt();
+            return;
         }
-    }
-
-    /// Copy selection with a specific theme's formatting
-    pub fn copy_selection_with_theme(&mut self, theme_name: &str) {
         use crate::services::styled_image::render_styled_html;
 
         // Load the requested theme
@@ -3799,6 +3751,53 @@ impl Editor {
         } else {
             self.clipboard.copy(text);
             self.status_message = Some("Copied as plain text".to_string());
+        }
+    }
+
+    /// Start the theme selection prompt for copy with formatting
+    fn start_copy_with_formatting_prompt(&mut self) {
+        use crate::view::prompt::PromptType;
+
+        let available_themes = crate::view::theme::Theme::available_themes();
+        let current_theme_name = &self.theme.name;
+
+        // Find the index of the current theme
+        let current_index = available_themes
+            .iter()
+            .position(|name| name == current_theme_name)
+            .unwrap_or(0);
+
+        let suggestions: Vec<crate::input::commands::Suggestion> = available_themes
+            .iter()
+            .map(|theme_name| {
+                let is_current = theme_name == current_theme_name;
+                crate::input::commands::Suggestion {
+                    text: theme_name.to_string(),
+                    description: if is_current {
+                        Some("(current)".to_string())
+                    } else {
+                        None
+                    },
+                    value: Some(theme_name.to_string()),
+                    disabled: false,
+                    keybinding: None,
+                    source: None,
+                }
+            })
+            .collect();
+
+        self.prompt = Some(crate::view::prompt::Prompt::with_suggestions(
+            "Copy with theme: ".to_string(),
+            PromptType::CopyWithFormattingTheme,
+            suggestions,
+        ));
+
+        if let Some(prompt) = self.prompt.as_mut() {
+            if !prompt.suggestions.is_empty() {
+                prompt.selected_suggestion = Some(current_index);
+                prompt.input = current_theme_name.to_string();
+                prompt.cursor_pos = prompt.input.len();
+            }
         }
     }
 

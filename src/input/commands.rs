@@ -235,7 +235,7 @@ pub fn get_all_commands() -> Vec<Command> {
             name: "Copy with Formatting".to_string(),
             description: "Copy selection with syntax highlighting colors (as rich text)"
                 .to_string(),
-            action: Action::CopyWithFormatting,
+            action: Action::CopyWithTheme(String::new()),
             contexts: vec![KeyContext::Normal],
             custom_contexts: vec![],
             source: CommandSource::Builtin,

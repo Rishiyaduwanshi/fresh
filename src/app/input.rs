@@ -248,7 +248,6 @@ impl Editor {
                 self.toggle_auto_revert();
             }
             Action::Copy => self.copy_selection(),
-            Action::CopyWithFormatting => self.copy_selection_with_formatting(),
             Action::CopyWithTheme(theme) => self.copy_selection_with_theme(&theme),
             Action::Cut => {
                 if self.is_editing_disabled() {
