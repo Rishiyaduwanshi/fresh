@@ -55,8 +55,6 @@ const STYLE_REMOVE_TEXT: [number, number, number] = [255, 150, 150]; // Very Bri
 const STYLE_STAGED: [number, number, number] = [100, 100, 100]; 
 const STYLE_DISCARDED: [number, number, number] = [120, 60, 60];
 
-const encoder = new TextEncoder();
-
 /**
  * Calculate UTF-8 byte length of a string manually since TextEncoder is not available
  */
@@ -180,10 +178,10 @@ function renderReviewStream(): { entries: TextPropertyEntry[], highlights: Highl
   // Exact Byte Constants
   const BOX_PIPE_BYTES = 3; // "│"
   const BOX_DR_BYTES = 3;   // "┌"
-  const BOX_HORIZ_BYTES = 3; // "─"
 
   state.hunks.forEach((hunk, hunkIndex) => {
     if (hunk.file !== currentFile) {
+      // Top border with filename
       const titlePrefix = "┌─ ";
       const titleLine = `${titlePrefix}${hunk.file} ${"─".repeat(Math.max(0, 60 - hunk.file.length))}\n`;
       const titleLen = getByteLength(titleLine);
@@ -379,17 +377,25 @@ globalThis.review_undo_action = () => {
 globalThis.review_next_hunk = () => {
     const bid = editor.getActiveBufferId();
     const props = editor.getTextPropertiesAtCursor(bid);
-    let cur = -1;
-    if (props.length > 0 && props[0].index !== undefined) cur = props[0].index as number;
-    if (cur + 1 < state.hunks.length) editor.setBufferCursor(bid, state.hunks[cur + 1].byteOffset);
+    let currentIndex = -1;
+    if (props.length > 0 && props[0].index !== undefined) currentIndex = props[0].index as number;
+    const nextIndex = currentIndex + 1;
+    if (nextIndex < state.hunks.length) {
+        const hunk = state.hunks[nextIndex];
+        editor.setBufferCursor(bid, hunk.byteOffset);
+    }
 };
 
 globalThis.review_prev_hunk = () => {
     const bid = editor.getActiveBufferId();
     const props = editor.getTextPropertiesAtCursor(bid);
-    let cur = state.hunks.length;
-    if (props.length > 0 && props[0].index !== undefined) cur = props[0].index as number;
-    if (cur - 1 >= 0) editor.setBufferCursor(bid, state.hunks[cur - 1].byteOffset);
+    let currentIndex = state.hunks.length;
+    if (props.length > 0 && props[0].index !== undefined) currentIndex = props[0].index as number;
+    const prevIndex = currentIndex - 1;
+    if (prevIndex >= 0) {
+        const hunk = state.hunks[prevIndex];
+        editor.setBufferCursor(bid, hunk.byteOffset);
+    }
 };
 
 globalThis.review_refresh = () => { refreshReviewData(); };
