@@ -56,7 +56,23 @@ const STYLE_REMOVE_TEXT: [number, number, number] = [255, 100, 100]; // Bright R
 const STYLE_STAGED: [number, number, number] = [100, 100, 100]; // Dimmed/Grey
 const STYLE_DISCARDED: [number, number, number] = [150, 50, 50];
 
-const encoder = new TextEncoder();
+/**
+ * Calculate UTF-8 byte length of a string manually since TextEncoder is not available
+ */
+function getByteLength(str: string): number {
+    let s = 0;
+    for (let i = 0; i < str.length; i++) {
+        const code = str.charCodeAt(i);
+        if (code <= 0x7f) s += 1;
+        else if (code <= 0x7ff) s += 2;
+        else if (code >= 0xd800 && code <= 0xdfff) {
+            // Surrogate pair
+            s += 4;
+            i++;
+        } else s += 3;
+    }
+    return s;
+}
 
 // --- Diff Logic ---
 
@@ -176,7 +192,7 @@ function renderReviewStream(): { entries: TextPropertyEntry[], highlights: Highl
   state.hunks.forEach((hunk, hunkIndex) => {
     if (hunk.file !== currentFile) {
       const bannerText = `\n📦 FILE: ${hunk.file}\n`;
-      const bannerLen = encoder.encode(bannerText).length;
+      const bannerLen = getByteLength(bannerText);
       entries.push({
         text: bannerText,
         properties: { type: "banner", file: hunk.file }
@@ -190,7 +206,7 @@ function renderReviewStream(): { entries: TextPropertyEntry[], highlights: Highl
 
     const statusIcon = hunk.status === 'staged' ? '✓' : (hunk.status === 'discarded' ? '✗' : ' ');
     const headerText = `  ${statusIcon} @@ ${hunk.contextHeader}\n`;
-    const headerLen = encoder.encode(headerText).length;
+    const headerLen = getByteLength(headerText);
     let hunkColor = STYLE_HUNK_HEADER;
     if (hunk.status === 'staged') hunkColor = STYLE_STAGED;
     else if (hunk.status === 'discarded') hunkColor = STYLE_DISCARDED;
@@ -206,7 +222,7 @@ function renderReviewStream(): { entries: TextPropertyEntry[], highlights: Highl
         const line = hunk.lines[i];
         const nextLine = hunk.lines[i + 1];
         const lineText = `    ${line}\n`;
-        const lineLen = encoder.encode(lineText).length;
+        const lineLen = getByteLength(lineText);
 
         if (line.startsWith('-') && nextLine && nextLine.startsWith('+') && hunk.status === 'pending') {
             const oldContent = line.substring(1);
@@ -217,7 +233,7 @@ function renderReviewStream(): { entries: TextPropertyEntry[], highlights: Highl
             entries.push({ text: lineText, properties: { type: "content", hunkId: hunk.id } });
             let charByteOffset = currentByte + 5; // skip "    -"
             diffParts.forEach(p => {
-                const partLen = encoder.encode(p.text).length;
+                const partLen = getByteLength(p.text);
                 if (p.type === 'removed') {
                     highlights.push({ range: [charByteOffset, charByteOffset + partLen], fg: STYLE_REMOVE_TEXT, bg: STYLE_REMOVE_BG, bold: true });
                     charByteOffset += partLen;
@@ -230,11 +246,11 @@ function renderReviewStream(): { entries: TextPropertyEntry[], highlights: Highl
 
             // Added Line
             const nextLineText = `    ${nextLine}\n`;
-            const nextLineLen = encoder.encode(nextLineText).length;
+            const nextLineLen = getByteLength(nextLineText);
             entries.push({ text: nextLineText, properties: { type: "content", hunkId: hunk.id } });
             charByteOffset = currentByte + 5; // skip "    +"
             diffParts.forEach(p => {
-                const partLen = encoder.encode(p.text).length;
+                const partLen = getByteLength(p.text);
                 if (p.type === 'added') {
                     highlights.push({ range: [charByteOffset, charByteOffset + partLen], fg: STYLE_ADD_TEXT, bg: STYLE_ADD_BG, bold: true });
                     charByteOffset += partLen;
