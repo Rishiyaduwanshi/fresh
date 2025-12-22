@@ -222,10 +222,12 @@ function renderReviewStream(): { entries: TextPropertyEntry[], highlights: Highl
             parts.forEach(p => {
                 if (p.type === 'removed') {
                     highlights.push({ range: [charOffset, charOffset + p.text.length], fg: STYLE_REMOVE_TEXT, bg: STYLE_REMOVE_BG, bold: true });
+                    charOffset += p.text.length;
                 } else if (p.type === 'unchanged') {
                     highlights.push({ range: [charOffset, charOffset + p.text.length], fg: STYLE_REMOVE_TEXT });
+                    charOffset += p.text.length;
                 }
-                charOffset += p.text.length;
+                // Skip 'added' parts for the removed line
             });
             currentByte += lineText.length;
 
@@ -236,10 +238,12 @@ function renderReviewStream(): { entries: TextPropertyEntry[], highlights: Highl
             parts.forEach(p => {
                 if (p.type === 'added') {
                     highlights.push({ range: [charOffset, charOffset + p.text.length], fg: STYLE_ADD_TEXT, bg: STYLE_ADD_BG, bold: true });
+                    charOffset += p.text.length;
                 } else if (p.type === 'unchanged') {
                     highlights.push({ range: [charOffset, charOffset + p.text.length], fg: STYLE_ADD_TEXT });
+                    charOffset += p.text.length;
                 }
-                charOffset += p.text.length;
+                // Skip 'removed' parts for the added line
             });
             currentByte += nextLineFull.length;
             i++; // Skip next line
