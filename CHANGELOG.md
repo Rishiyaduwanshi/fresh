@@ -1,5 +1,41 @@
 # Release Notes
 
+## 0.1.59
+
+### Features
+
+* **Copy with Formatting**: Copy selected text as HTML with syntax highlighting. Works in Google Docs, Word, etc. Available via Edit menu submenu or command palette.
+
+* **Pascal Language Support**: Auto-indentation and semantic highlighting for `.pas` and `.p` files (@casibbald).
+
+* **Set Line Ending Command**: Change buffer line ending format (LF/CRLF/CR) via command palette.
+
+* **Buffer Settings Commands**: Toggle auto_indent, use_tabs, and tab_size via command palette.
+
+* **Settings UI**: Recursive dialog stack for nested arrays/maps, focus indicators, Ctrl+S to save, select-all on number input edit.
+
+### Bug Fixes
+
+* **Tab Size Config**: Fixed tab_size config not being respected (#384).
+
+* **Windows Multi-Line Paste**: Fixed CRLF paste appearing as single line (#427).
+
+* **CRLF Highlighting**: Fixed syntax highlighting offset drift in CRLF files.
+
+* **CRLF Cursor**: Fixed cursor invisible at end of line in CRLF mode.
+
+* **Menu Navigation**: Keyboard navigation now skips disabled items.
+
+* **Cut/Copy Disabled**: Menu items grayed out when no selection.
+
+### Internal
+
+* Extracted CRLF helpers, consolidated TextMateHighlighter into TextMateEngine.
+
+* Updated insta (1.45.0), deno_core (0.376.0).
+
+---
+
 ## 0.1.57
 
 ### Bug Fixes
