@@ -37,6 +37,7 @@ impl Editor {
         namespace: Option<OverlayNamespace>,
         range: std::ops::Range<usize>,
         color: (u8, u8, u8),
+        bg_color: Option<(u8, u8, u8)>,
         underline: bool,
         bold: bool,
         italic: bool,
@@ -44,6 +45,7 @@ impl Editor {
         if let Some(state) = self.buffers.get_mut(&buffer_id) {
             let face = crate::model::event::OverlayFace::Style {
                 color,
+                bg_color,
                 bold,
                 italic,
                 underline,

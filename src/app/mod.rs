@@ -5965,12 +5965,13 @@ impl Editor {
                 namespace,
                 range,
                 color,
+                bg_color,
                 underline,
                 bold,
                 italic,
             } => {
                 self.handle_add_overlay(
-                    buffer_id, namespace, range, color, underline, bold, italic,
+                    buffer_id, namespace, range, color, bg_color, underline, bold, italic,
                 );
             }
             PluginCommand::RemoveOverlay { buffer_id, handle } => {

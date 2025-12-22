@@ -288,7 +288,16 @@ function refreshReviewStream() {
     
     editor.clearNamespace(state.reviewBufferId, "audit-diff");
     highlights.forEach((h) => {
-        editor.addOverlay(state.reviewBufferId, "audit-diff", h.range[0], h.range[1], h.fg[0], h.fg[1], h.fg[2], false, h.bold || false, false);
+        const bg = h.bg || [-1, -1, -1];
+        editor.addOverlay(
+            state.reviewBufferId!, 
+            "audit-diff", 
+            h.range[0], 
+            h.range[1], 
+            h.fg[0], h.fg[1], h.fg[2], 
+            bg[0], bg[1], bg[2], 
+            false, h.bold || false, false
+        );
     });
   }
 }

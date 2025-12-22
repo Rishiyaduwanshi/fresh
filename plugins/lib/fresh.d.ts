@@ -719,12 +719,15 @@ interface EditorAPI {
    * @param r - Red (0-255)
    * @param g - Green (0-255)
    * @param b - Blue (0-255)
+   * @param bg_r - Background Red (0-255, -1 for none)
+   * @param bg_g - Background Green (0-255, -1 for none)
+   * @param bg_b - Background Blue (0-255, -1 for none)
    * @param underline - Add underline decoration
    * @param bold - Use bold text
    * @param italic - Use italic text
    * @returns true if overlay was added
    */
-  addOverlay(buffer_id: number, namespace: string, start: number, end: number, r: number, g: number, b: number, underline: boolean, bold: boolean, italic: boolean): boolean;
+  addOverlay(buffer_id: number, namespace: string, start: number, end: number, r: number, g: number, b: number, bg_r: number, bg_g: number, bg_b: number, underline: boolean, bold: boolean, italic: boolean): boolean;
   /**
    * Remove a specific overlay by its handle
    * @param buffer_id - The buffer ID
