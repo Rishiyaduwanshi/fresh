@@ -23,6 +23,7 @@ interface Hunk {
   lines: string[];
   status: HunkStatus;
   contextHeader: string; // e.g., "fn process_data()"
+  byteOffset: number; // Position in the virtual buffer
 }
 
 /**
@@ -51,7 +52,7 @@ const STYLE_FILE_BANNER: [number, number, number] = [200, 200, 100]; // Yellowis
 const STYLE_ADD: [number, number, number] = [50, 200, 50]; // Green
 const STYLE_REMOVE: [number, number, number] = [200, 50, 50]; // Red
 const STYLE_STAGED: [number, number, number] = [100, 100, 100]; // Dimmed/Grey
-const STYLE_DISCARDED: [number, number, number] = [100, 50, 50]; // Dimmed Red (strikethrough logic handled by content gen if needed)
+const STYLE_DISCARDED: [number, number, number] = [150, 50, 50];
 
 // --- Helper Functions ---
 
@@ -62,7 +63,6 @@ async function getGitDiff(): Promise<Hunk[]> {
         editor.debug(`AuditMode: Git diff failed: ${result.stderr}`);
         return [];
     }
-    editor.debug(`AuditMode: Git diff output:\n${result.stdout}`);
 
     const lines = result.stdout.split('\n');
     const hunks: Hunk[] = [];
@@ -77,18 +77,6 @@ async function getGitDiff(): Promise<Hunk[]> {
             if (match) {
                 currentFile = match[2];
                 currentHunk = null;
-                editor.debug(`AuditMode: Parsing diff for file: ${currentFile}`);
-            }
-        } else if (line.startsWith('--- a/')) {
-            if (currentFile === "") {
-                const path = line.substring(6);
-                if (path !== '/dev/null') {
-                    currentFile = path;
-                }
-            }
-        } else if (line.startsWith('+++ b/')) {
-            if (currentFile === "" || currentFile === "/dev/null") {
-                currentFile = line.substring(6);
             }
         } else if (line.startsWith('@@')) {
             const match = line.match(/@@ -(\d+),?\d* \+(\d+),?\d* @@(.*)/);
@@ -101,7 +89,8 @@ async function getGitDiff(): Promise<Hunk[]> {
                     type: 'modify',
                     lines: [],
                     status: 'pending',
-                    contextHeader: match[3]?.trim() || ""
+                    contextHeader: match[3]?.trim() || "",
+                    byteOffset: 0
                 };
                 hunks.push(currentHunk);
             }
@@ -111,34 +100,51 @@ async function getGitDiff(): Promise<Hunk[]> {
             }
         }
     }
-    editor.debug(`AuditMode: Parsed ${hunks.length} hunks.`);
     return hunks;
 }
 
 function renderReviewStream(): TextPropertyEntry[] {
   const entries: TextPropertyEntry[] = [];
   let currentFile = "";
+  let currentByte = 0;
 
   state.hunks.forEach((hunk, index) => {
     if (hunk.file !== currentFile) {
+      const bannerText = `\n📦 FILE: ${hunk.file}\n`;
       entries.push({
-        text: `\n📦 FILE: ${hunk.file}\n`,
-        properties: { type: "banner", file: hunk.file }
+        text: bannerText,
+        properties: { type: "banner", file: hunk.file, color: STYLE_FILE_BANNER, bold: true }
       });
+      currentByte += bannerText.length;
       currentFile = hunk.file;
     }
 
+    hunk.byteOffset = currentByte;
+
     const statusIcon = hunk.status === 'staged' ? '✓' : (hunk.status === 'discarded' ? '✗' : ' ');
+    const headerText = `  ${statusIcon} @@ ${hunk.contextHeader}\n`;
+    let hunkColor = STYLE_HUNK_HEADER;
+    if (hunk.status === 'staged') hunkColor = STYLE_STAGED;
+    else if (hunk.status === 'discarded') hunkColor = STYLE_DISCARDED;
+
     entries.push({
-      text: `  ${statusIcon} @@ ${hunk.contextHeader}\n`,
-      properties: { type: "header", hunkId: hunk.id, index: index }
+      text: headerText,
+      properties: { type: "header", hunkId: hunk.id, index: index, color: hunkColor }
     });
+    currentByte += headerText.length;
 
     hunk.lines.forEach((line) => {
+        let lineStyle = hunkColor;
+        if (hunk.status === 'pending') {
+            if (line.startsWith('+')) lineStyle = STYLE_ADD;
+            else if (line.startsWith('-')) lineStyle = STYLE_REMOVE;
+        }
+        const lineText = `    ${line}\n`;
         entries.push({
-            text: `    ${line}\n`,
-            properties: { type: "content", hunkId: hunk.id }
+            text: lineText,
+            properties: { type: "content", hunkId: hunk.id, color: lineStyle }
         });
+        currentByte += lineText.length;
     });
   });
 
@@ -153,70 +159,175 @@ function refreshReviewStream() {
   if (state.reviewBufferId !== null) {
     const content = renderReviewStream();
     editor.setVirtualBufferContent(state.reviewBufferId, content);
-    editor.debug("AuditMode: Refreshed review stream.");
   }
 }
 
-// --- On-demand Update Logic ---
+// --- Refresh Logic ---
 
 let isUpdating = false;
 
 async function updateHunks(): Promise<boolean> {
     const newHunks = await getGitDiff();
     
-    const hasChanged = newHunks.length !== state.hunks.length || 
-        !newHunks.every((hunk, i) => hunk.id === state.hunks[i]?.id && hunk.lines.join() === state.hunks[i]?.lines.join());
+    // Merge status from existing hunks
+    newHunks.forEach(hunk => {
+        hunk.status = state.hunkStatus[hunk.id] || 'pending';
+    });
 
-    if (hasChanged) {
-        editor.debug("AuditMode: Changes detected.");
-        state.hunks = newHunks;
-        state.hunks.forEach(hunk => {
-            hunk.status = state.hunkStatus[hunk.id] || 'pending';
-        });
-        return true;
-    }
-
-    editor.debug("AuditMode: No changes detected.");
-    return false;
+    state.hunks = newHunks;
+    return true;
 }
 
 async function refreshAuditStream() {
-    editor.debug("AuditMode: Refresh triggered.");
-    if (isUpdating) {
-        editor.debug("AuditMode: Update already in progress, skipping.");
-        return;
-    }
+    if (isUpdating) return;
     isUpdating = true;
     editor.setStatus("Refreshing audit stream...");
 
     try {
-        if (await updateHunks()) {
-            refreshReviewStream();
-            editor.setStatus(`Audit stream updated. Found ${state.hunks.length} hunks.`);
-        } else {
-            editor.setStatus("Audit stream is up-to-date.");
-        }
+        await updateHunks();
+        refreshReviewStream();
+        editor.setStatus(`Audit stream updated. Found ${state.hunks.length} hunks.`);
     } catch (e) {
-        editor.debug(`AuditMode: Error updating audit stream: ${e}`);
-        editor.setStatus(`Error refreshing audit stream: ${e}`);
+        editor.debug(`AuditMode: Error updating: ${e}`);
     } finally {
         isUpdating = false;
-        editor.debug("AuditMode: Update cycle finished.");
     }
 }
 
 // --- Actions ---
 
 globalThis.audit_stage_hunk = () => {
-    // implementation...
+    const bufferId = editor.getActiveBufferId();
+    const props = editor.getTextPropertiesAtCursor(bufferId);
+    if (props.length > 0 && props[0].hunkId) {
+        const hunkId = props[0].hunkId as string;
+        state.hunkStatus[hunkId] = 'staged';
+        const hunk = state.hunks.find(h => h.id === hunkId);
+        if (hunk) hunk.status = 'staged';
+        refreshReviewStream();
+    }
 };
+
 globalThis.audit_discard_hunk = () => {
-    // implementation...
+    const bufferId = editor.getActiveBufferId();
+    const props = editor.getTextPropertiesAtCursor(bufferId);
+    if (props.length > 0 && props[0].hunkId) {
+        const hunkId = props[0].hunkId as string;
+        state.hunkStatus[hunkId] = 'discarded';
+        const hunk = state.hunks.find(h => h.id === hunkId);
+        if (hunk) hunk.status = 'discarded';
+        refreshReviewStream();
+    }
 };
+
 globalThis.audit_undo_action = () => {
-    // implementation...
+    const bufferId = editor.getActiveBufferId();
+    const props = editor.getTextPropertiesAtCursor(bufferId);
+    if (props.length > 0 && props[0].hunkId) {
+        const hunkId = props[0].hunkId as string;
+        state.hunkStatus[hunkId] = 'pending';
+        const hunk = state.hunks.find(h => h.id === hunkId);
+        if (hunk) hunk.status = 'pending';
+        refreshReviewStream();
+    }
 };
-// ... (Side-by-side and conflict logic remains the same)
+
+globalThis.audit_next_hunk = () => {
+    const bufferId = editor.getActiveBufferId();
+    const props = editor.getTextPropertiesAtCursor(bufferId);
+    let currentIndex = -1;
+    if (props.length > 0 && props[0].index !== undefined) {
+        currentIndex = props[0].index as number;
+    }
+    const nextIndex = currentIndex + 1;
+    if (nextIndex < state.hunks.length) {
+        const hunk = state.hunks[nextIndex];
+        editor.setBufferCursor(bufferId, hunk.byteOffset);
+    }
+};
+
+globalThis.audit_prev_hunk = () => {
+    const bufferId = editor.getActiveBufferId();
+    const props = editor.getTextPropertiesAtCursor(bufferId);
+    let currentIndex = state.hunks.length;
+    if (props.length > 0 && props[0].index !== undefined) {
+        currentIndex = props[0].index as number;
+    }
+    const prevIndex = currentIndex - 1;
+    if (prevIndex >= 0) {
+        const hunk = state.hunks[prevIndex];
+        editor.setBufferCursor(bufferId, hunk.byteOffset);
+    }
+};
+
+globalThis.audit_refresh = () => {
+    refreshAuditStream();
+};
+
+/**
+ * Side-by-Side Diff State
+ */
+interface DiffViewState {
+    leftBufferId: number;
+    rightBufferId: number;
+    leftSplitId: number;
+    rightSplitId: number;
+}
+
+let activeDiffView: DiffViewState | null = null;
+
+globalThis.on_viewport_changed = (data: any) => {
+    if (!activeDiffView) return;
+    if (data.split_id === activeDiffView.leftSplitId) {
+        (editor as any).setSplitScroll(activeDiffView.rightSplitId, data.top_byte);
+    } else if (data.split_id === activeDiffView.rightSplitId) {
+        (editor as any).setSplitScroll(activeDiffView.leftSplitId, data.top_byte);
+    }
+};
+
+globalThis.audit_drill_down = async () => {
+    const bufferId = editor.getActiveBufferId();
+    const props = editor.getTextPropertiesAtCursor(bufferId);
+    if (props.length > 0 && props[0].hunkId) {
+        const hunkId = props[0].hunkId as string;
+        const hunk = state.hunks.find(h => h.id === hunkId);
+        if (!hunk) return;
+
+        const gitShow = await editor.spawnProcess("git", ["show", `HEAD:${hunk.file}`]);
+        if (gitShow.exit_code !== 0) return;
+
+        const leftBufferId = await editor.createVirtualBuffer({
+            name: `HEAD:${hunk.file}`,
+            mode: "special",
+            read_only: true,
+            entries: [{ text: gitShow.stdout, properties: {} }],
+            show_line_numbers: true
+        });
+
+        editor.openFile(hunk.file, hunk.range.start, 0);
+        const rightBufferId = editor.getActiveBufferId();
+        const rightSplitId = (editor as any).getActiveSplitId();
+
+        const leftResult = await editor.createVirtualBufferInSplit({
+            name: `HEAD:${hunk.file}`,
+            mode: "special",
+            read_only: true,
+            entries: [{ text: gitShow.stdout, properties: {} }],
+            ratio: 0.5,
+            direction: "vertical",
+            show_line_numbers: true
+        });
+
+        activeDiffView = {
+            leftBufferId: leftResult.buffer_id,
+            rightBufferId: rightBufferId,
+            leftSplitId: leftResult.split_id!,
+            rightSplitId: rightSplitId
+        };
+
+        editor.on("viewport_changed", "on_viewport_changed");
+    }
+};
 
 // --- Initialization ---
 
@@ -224,7 +335,7 @@ globalThis.start_audit_mode = async () => {
     editor.setStatus("Generating Audit Stream...");
     editor.setContext("audit-mode", true);
 
-    await refreshAuditStream();
+    await updateHunks();
 
     const bufferId = await VirtualBufferFactory.create({
         name: "*Audit Stream*",
@@ -239,7 +350,6 @@ globalThis.start_audit_mode = async () => {
 
     editor.on("buffer_activated", "on_audit_buffer_activated");
     editor.on("buffer_closed", "on_audit_buffer_closed");
-    editor.debug("AuditMode: Registered session hooks.");
 };
 
 globalThis.stop_audit_mode = () => {
@@ -248,12 +358,10 @@ globalThis.stop_audit_mode = () => {
     editor.off("buffer_activated", "on_audit_buffer_activated");
     editor.off("buffer_closed", "on_audit_buffer_closed");
     editor.setStatus("Audit Mode stopped.");
-    editor.debug("AuditMode: Stopped and cleaned up hooks.");
 };
 
 globalThis.on_audit_buffer_activated = (data: any) => {
     if (data.buffer_id === state.reviewBufferId) {
-        editor.debug("AuditMode: Review Stream focused, refreshing.");
         refreshAuditStream();
     }
 };
@@ -264,14 +372,12 @@ globalThis.on_audit_buffer_closed = (data: any) => {
     }
 };
 
-globalThis.audit_refresh = () => {
-    refreshAuditStream();
-};
-
 // Register Modes and Commands
 editor.registerCommand("Start Audit Mode", "Start code review session", "start_audit_mode", "global");
 editor.registerCommand("Stop Audit Mode", "Stop the audit session", "stop_audit_mode", "audit-mode");
-editor.registerCommand("Refresh Audit Stream", "Manually refresh the list of changes", "audit_refresh", "audit-mode");
+editor.registerCommand("Refresh Audit Stream", "Refresh the list of changes", "audit_refresh", "audit-mode");
+
+editor.on("buffer_closed", "on_buffer_closed");
 
 editor.defineMode("audit-mode", "normal", [
     ["s", "audit_stage_hunk"],
