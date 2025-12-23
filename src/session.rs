@@ -34,6 +34,9 @@ use crate::input::input_history::get_data_dir;
 /// Current session file format version
 pub const SESSION_VERSION: u32 = 1;
 
+/// Current per-file session version
+pub const FILE_SESSION_VERSION: u32 = 1;
+
 /// Persisted session state for a working directory
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Session {
@@ -283,6 +286,144 @@ pub struct SerializedTerminalSession {
     pub rows: u16,
     pub log_path: PathBuf,
     pub backing_path: PathBuf,
+}
+
+// ============================================================================
+// Global file state persistence (per-file, not per-project)
+// ============================================================================
+
+/// Individual file state stored in its own file
+///
+/// Each source file's scroll/cursor state is stored in a separate JSON file
+/// at `$XDG_DATA_HOME/fresh/file_states/{encoded_path}.json`.
+/// This allows concurrent editors to safely update different files without
+/// conflicts.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PersistedFileState {
+    /// Schema version for future migrations
+    pub version: u32,
+
+    /// The file state (cursor, scroll, etc.)
+    pub state: SerializedFileState,
+
+    /// Timestamp when last saved (Unix epoch seconds)
+    pub saved_at: u64,
+}
+
+impl PersistedFileState {
+    fn new(state: SerializedFileState) -> Self {
+        Self {
+            version: FILE_SESSION_VERSION,
+            state,
+            saved_at: SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs(),
+        }
+    }
+}
+
+/// Per-file session storage for scroll/cursor positions
+///
+/// Unlike project sessions which store file states relative to a working directory,
+/// this stores file states by absolute path so they persist across projects.
+/// This means opening the same file from different projects (or without a project)
+/// will restore the same scroll/cursor position.
+///
+/// Each file's state is stored in a separate JSON file at
+/// `$XDG_DATA_HOME/fresh/file_states/{encoded_path}.json` to avoid conflicts
+/// between concurrent editors. States are loaded lazily when opening files
+/// and saved immediately when closing files or saving the session.
+pub struct PersistedFileSession;
+
+impl PersistedFileSession {
+    /// Get the directory for file state files
+    fn states_dir() -> io::Result<PathBuf> {
+        Ok(get_data_dir()?.join("file_states"))
+    }
+
+    /// Get the state file path for a source file
+    fn state_file_path(source_path: &Path) -> io::Result<PathBuf> {
+        let canonical = source_path
+            .canonicalize()
+            .unwrap_or_else(|_| source_path.to_path_buf());
+        let filename = format!("{}.json", encode_path_for_filename(&canonical));
+        Ok(Self::states_dir()?.join(filename))
+    }
+
+    /// Load the state for a file by its absolute path (from disk)
+    pub fn load(path: &Path) -> Option<SerializedFileState> {
+        let state_path = match Self::state_file_path(path) {
+            Ok(p) => p,
+            Err(_) => return None,
+        };
+
+        if !state_path.exists() {
+            return None;
+        }
+
+        let content = match std::fs::read_to_string(&state_path) {
+            Ok(c) => c,
+            Err(_) => return None,
+        };
+
+        let persisted: PersistedFileState = match serde_json::from_str(&content) {
+            Ok(p) => p,
+            Err(_) => return None,
+        };
+
+        // Check version compatibility
+        if persisted.version > FILE_SESSION_VERSION {
+            return None;
+        }
+
+        Some(persisted.state)
+    }
+
+    /// Save the state for a file by its absolute path (to disk, atomic write)
+    pub fn save(path: &Path, state: SerializedFileState) {
+        let state_path = match Self::state_file_path(path) {
+            Ok(p) => p,
+            Err(e) => {
+                tracing::warn!("Failed to get state path for {:?}: {}", path, e);
+                return;
+            }
+        };
+
+        // Ensure directory exists
+        if let Some(parent) = state_path.parent() {
+            if let Err(e) = std::fs::create_dir_all(parent) {
+                tracing::warn!("Failed to create state dir: {}", e);
+                return;
+            }
+        }
+
+        let persisted = PersistedFileState::new(state);
+        let content = match serde_json::to_string_pretty(&persisted) {
+            Ok(c) => c,
+            Err(e) => {
+                tracing::warn!("Failed to serialize file state: {}", e);
+                return;
+            }
+        };
+
+        // Write atomically: temp file + rename
+        let temp_path = state_path.with_extension("json.tmp");
+
+        let write_result = (|| -> io::Result<()> {
+            let mut file = std::fs::File::create(&temp_path)?;
+            file.write_all(content.as_bytes())?;
+            file.sync_all()?;
+            std::fs::rename(&temp_path, &state_path)?;
+            Ok(())
+        })();
+
+        if let Err(e) = write_result {
+            tracing::warn!("Failed to save file state for {:?}: {}", path, e);
+        } else {
+            tracing::trace!("File state saved for {:?}", path);
+        }
+    }
 }
 
 // ============================================================================

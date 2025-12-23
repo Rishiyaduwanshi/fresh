@@ -1372,6 +1372,10 @@ impl Editor {
             view_state.add_buffer(buffer_id);
         }
 
+        // Restore global file state (scroll/cursor position) if available
+        // This persists file positions across projects and editor instances
+        self.restore_global_file_state(buffer_id, path, active_split);
+
         // Emit control event
         self.emit_event(
             crate::model::control_event::events::FILE_OPENED.name,
@@ -1394,6 +1398,123 @@ impl Editor {
         );
 
         Ok(buffer_id)
+    }
+
+    /// Restore global file state (cursor and scroll position) for a newly opened file
+    ///
+    /// This looks up the file's saved state from the global file states store
+    /// and applies it to both the EditorState (cursor) and SplitViewState (viewport).
+    fn restore_global_file_state(
+        &mut self,
+        buffer_id: BufferId,
+        path: &Path,
+        split_id: crate::model::event::SplitId,
+    ) {
+        use crate::session::PersistedFileSession;
+
+        // Load the per-file session for this path (lazy load from disk)
+        let file_state = match PersistedFileSession::load(path) {
+            Some(state) => state,
+            None => return, // No saved state for this file
+        };
+
+        // Get the buffer to validate positions
+        let max_pos = match self.buffers.get(&buffer_id) {
+            Some(buffer) => buffer.buffer.len(),
+            None => return,
+        };
+
+        // Apply cursor position to EditorState (authoritative cursor)
+        if let Some(editor_state) = self.buffers.get_mut(&buffer_id) {
+            let cursor_pos = file_state.cursor.position.min(max_pos);
+            editor_state.cursors.primary_mut().position = cursor_pos;
+            editor_state.cursors.primary_mut().anchor =
+                file_state.cursor.anchor.map(|a| a.min(max_pos));
+            editor_state.cursors.primary_mut().sticky_column = file_state.cursor.sticky_column;
+
+            tracing::debug!(
+                "Restored global file state for {:?}: cursor={}",
+                path,
+                cursor_pos
+            );
+        }
+
+        // Apply scroll position and cursor to SplitViewState
+        if let Some(view_state) = self.split_view_states.get_mut(&split_id) {
+            let cursor_pos = file_state.cursor.position.min(max_pos);
+            view_state.cursors.primary_mut().position = cursor_pos;
+            view_state.cursors.primary_mut().anchor =
+                file_state.cursor.anchor.map(|a| a.min(max_pos));
+            view_state.cursors.primary_mut().sticky_column = file_state.cursor.sticky_column;
+
+            view_state.viewport.top_byte = file_state.scroll.top_byte.min(max_pos);
+            view_state.viewport.top_view_line_offset = file_state.scroll.top_view_line_offset;
+            view_state.viewport.left_column = file_state.scroll.left_column;
+            // Prevent ensure_visible from overwriting the restored scroll position
+            view_state.viewport.set_skip_resize_sync();
+
+            tracing::debug!(
+                "Restored global file state for {:?}: top_byte={}",
+                path,
+                view_state.viewport.top_byte
+            );
+        }
+    }
+
+    /// Save file state when closing a buffer (for per-file session persistence)
+    fn save_file_state_on_close(&self, buffer_id: BufferId) {
+        use crate::session::{
+            PersistedFileSession, SerializedCursor, SerializedFileState, SerializedScroll,
+        };
+
+        // Get the file path for this buffer
+        let abs_path = match self.buffer_metadata.get(&buffer_id) {
+            Some(metadata) => match metadata.file_path() {
+                Some(path) => path.to_path_buf(),
+                None => return, // Not a file buffer
+            },
+            None => return,
+        };
+
+        // Find a split that has this buffer open to get the view state
+        let view_state = self
+            .split_view_states
+            .values()
+            .find(|vs| vs.has_buffer(buffer_id));
+
+        let view_state = match view_state {
+            Some(vs) => vs,
+            None => return, // No split has this buffer
+        };
+
+        // Capture the current state
+        let primary_cursor = view_state.cursors.primary();
+        let file_state = SerializedFileState {
+            cursor: SerializedCursor {
+                position: primary_cursor.position,
+                anchor: primary_cursor.anchor,
+                sticky_column: primary_cursor.sticky_column,
+            },
+            additional_cursors: view_state
+                .cursors
+                .iter()
+                .skip(1)
+                .map(|(_, cursor)| SerializedCursor {
+                    position: cursor.position,
+                    anchor: cursor.anchor,
+                    sticky_column: cursor.sticky_column,
+                })
+                .collect(),
+            scroll: SerializedScroll {
+                top_byte: view_state.viewport.top_byte,
+                top_view_line_offset: view_state.viewport.top_view_line_offset,
+                left_column: view_state.viewport.left_column,
+            },
+        };
+
+        // Save to disk
+        PersistedFileSession::save(&abs_path, file_state);
+        tracing::debug!("Saved file state on close for {:?}", abs_path);
     }
 
     /// Navigate to a specific line and column in the active buffer.
@@ -2092,6 +2213,9 @@ impl Editor {
 
     /// Internal helper to close a buffer (shared by close_buffer and force_close_buffer)
     fn close_buffer_internal(&mut self, id: BufferId) -> io::Result<()> {
+        // Save file state before closing (for per-file session persistence)
+        self.save_file_state_on_close(id);
+
         // If closing a terminal buffer while in terminal mode, exit terminal mode
         if self.terminal_mode && self.is_terminal_buffer(id) {
             self.terminal_mode = false;
