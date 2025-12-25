@@ -39,9 +39,8 @@ jobs:
           cd npm-package
           mkdir -p test-package
           cp *.js test-package/
-          cp package.json test-package/
+          sed "s/VERSION_PLACEHOLDER/${{ steps.version.outputs.version }}/" package.json.template > test-package/package.json
           cp README.md test-package/
-          sed -i.bak 's/"version": "0.0.0-dev"/"version": "${{ steps.version.outputs.version }}"/' test-package/package.json
           cp ../LICENSE ../CHANGELOG.md test-package/ 2>/dev/null || true
           cp -r ../plugins test-package/ 2>/dev/null || true
           cp -r ../themes test-package/ 2>/dev/null || true
