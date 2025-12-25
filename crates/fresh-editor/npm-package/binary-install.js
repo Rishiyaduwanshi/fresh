@@ -35,9 +35,11 @@ function download(url, dest) {
             file.on('finish', () => {
                 file.close((err) => {
                     if (err) reject(err);
-                    else {
-                        // Wait briefly to ensure file handle is fully released
+                    else if (process.platform === 'win32') {
+                        // Wait briefly on Windows to ensure file handle is fully released
                         setTimeout(resolve, 100);
+                    } else {
+                        resolve();
                     }
                 });
             });
@@ -73,9 +75,9 @@ async function install() {
             execSync(`tar -xJf "${archivePath}" -C "${binDir}" --strip-components=1`, { stdio: 'inherit' });
         } else if (info.ext === 'zip') {
             if (process.platform === 'win32') {
-                // Use absolute paths with proper escaping for PowerShell
-                const absArchive = path.resolve(archivePath).replace(/\\/g, '\\\\');
-                const absBin = path.resolve(binDir).replace(/\\/g, '\\\\');
+                // Use absolute paths for PowerShell with -LiteralPath
+                const absArchive = path.resolve(archivePath);
+                const absBin = path.resolve(binDir);
 
                 execSync(
                     `powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "& {Expand-Archive -LiteralPath '${absArchive}' -DestinationPath '${absBin}' -Force}"`,
