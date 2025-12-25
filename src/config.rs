@@ -846,7 +846,15 @@ impl Config {
                 show_whitespace_tabs: true,
                 use_tabs: false,
                 tab_size: None,
-                on_save: Vec::new(),
+                on_save: vec![OnSaveAction {
+                    command: "rustfmt".to_string(),
+                    args: vec!["--edition".to_string(), "2021".to_string()],
+                    working_dir: None,
+                    stdin: true,
+                    replace_buffer: true,
+                    timeout_ms: 10000,
+                    optional: true,
+                }],
             },
         );
 
@@ -863,7 +871,15 @@ impl Config {
                 show_whitespace_tabs: true,
                 use_tabs: false,
                 tab_size: None,
-                on_save: Vec::new(),
+                on_save: vec![OnSaveAction {
+                    command: "prettier".to_string(),
+                    args: vec!["--stdin-filepath".to_string(), "$FILE".to_string()],
+                    working_dir: None,
+                    stdin: true,
+                    replace_buffer: true,
+                    timeout_ms: 10000,
+                    optional: true,
+                }],
             },
         );
 
@@ -880,7 +896,15 @@ impl Config {
                 show_whitespace_tabs: true,
                 use_tabs: false,
                 tab_size: None,
-                on_save: Vec::new(),
+                on_save: vec![OnSaveAction {
+                    command: "prettier".to_string(),
+                    args: vec!["--stdin-filepath".to_string(), "$FILE".to_string()],
+                    working_dir: None,
+                    stdin: true,
+                    replace_buffer: true,
+                    timeout_ms: 10000,
+                    optional: true,
+                }],
             },
         );
 
@@ -897,7 +921,19 @@ impl Config {
                 show_whitespace_tabs: true,
                 use_tabs: false,
                 tab_size: None,
-                on_save: Vec::new(),
+                on_save: vec![OnSaveAction {
+                    command: "ruff".to_string(),
+                    args: vec![
+                        "format".to_string(),
+                        "--stdin-filename".to_string(),
+                        "$FILE".to_string(),
+                    ],
+                    working_dir: None,
+                    stdin: true,
+                    replace_buffer: true,
+                    timeout_ms: 10000,
+                    optional: true,
+                }],
             },
         );
 
@@ -914,7 +950,15 @@ impl Config {
                 show_whitespace_tabs: true,
                 use_tabs: false,
                 tab_size: None,
-                on_save: Vec::new(),
+                on_save: vec![OnSaveAction {
+                    command: "clang-format".to_string(),
+                    args: vec![],
+                    working_dir: None,
+                    stdin: true,
+                    replace_buffer: true,
+                    timeout_ms: 10000,
+                    optional: true,
+                }],
             },
         );
 
@@ -938,7 +982,15 @@ impl Config {
                 show_whitespace_tabs: true,
                 use_tabs: false,
                 tab_size: None,
-                on_save: Vec::new(),
+                on_save: vec![OnSaveAction {
+                    command: "clang-format".to_string(),
+                    args: vec![],
+                    working_dir: None,
+                    stdin: true,
+                    replace_buffer: true,
+                    timeout_ms: 10000,
+                    optional: true,
+                }],
             },
         );
 
@@ -1038,7 +1090,15 @@ impl Config {
                 show_whitespace_tabs: true,
                 use_tabs: false,
                 tab_size: None,
-                on_save: Vec::new(),
+                on_save: vec![OnSaveAction {
+                    command: "prettier".to_string(),
+                    args: vec!["--stdin-filepath".to_string(), "$FILE".to_string()],
+                    working_dir: None,
+                    stdin: true,
+                    replace_buffer: true,
+                    timeout_ms: 10000,
+                    optional: true,
+                }],
             },
         );
 
@@ -1072,7 +1132,15 @@ impl Config {
                 show_whitespace_tabs: true,
                 use_tabs: false,
                 tab_size: None,
-                on_save: Vec::new(),
+                on_save: vec![OnSaveAction {
+                    command: "prettier".to_string(),
+                    args: vec!["--stdin-filepath".to_string(), "$FILE".to_string()],
+                    working_dir: None,
+                    stdin: true,
+                    replace_buffer: true,
+                    timeout_ms: 10000,
+                    optional: true,
+                }],
             },
         );
 
@@ -1107,7 +1175,15 @@ impl Config {
                 show_whitespace_tabs: false,
                 use_tabs: true,    // Go convention is to use tabs
                 tab_size: Some(8), // Go convention is 8-space tab width
-                on_save: Vec::new(),
+                on_save: vec![OnSaveAction {
+                    command: "gofmt".to_string(),
+                    args: vec![],
+                    working_dir: None,
+                    stdin: true,
+                    replace_buffer: true,
+                    timeout_ms: 10000,
+                    optional: true,
+                }],
             },
         );
 
