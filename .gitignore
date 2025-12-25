@@ -43,3 +43,12 @@ repo/
 # ts-rs auto-generated bindings (we use plugins/lib/fresh.d.ts instead)
 bindings/
 crates/fresh-editor/target
+
+# npm package development (template is the source of truth)
+npm-package/bin/
+npm-package/test-package/
+npm-package/*.tgz
+npm-package/plugins/
+npm-package/themes/
+npm-package/LICENSE
+npm-package/CHANGELOG.md

@@ -17,20 +17,33 @@ function download(url, dest) {
     https.get(url, (response) => {
       if (response.statusCode === 302 || response.statusCode === 301) {
         file.close(() => {
-          download(response.headers.location, dest).then(resolve).catch(reject);
+          // Clean up partial file before redirect
+          fs.unlink(dest, () => {
+            download(response.headers.location, dest).then(resolve).catch(reject);
+          });
         });
         return;
       }
       if (response.statusCode !== 200) {
         file.close();
-        reject(new Error(`Failed to download: ${response.statusCode}`));
+        fs.unlink(dest, () => {
+          reject(new Error(`Failed to download: ${response.statusCode}`));
+        });
         return;
       }
       response.pipe(file);
-      file.on('finish', () => { file.close(); resolve(); });
+      file.on('finish', () => {
+        file.close((err) => {
+          if (err) reject(err);
+          else {
+            // Wait briefly to ensure file handle is fully released
+            setTimeout(resolve, 100);
+          }
+        });
+      });
     }).on('error', (err) => {
       file.close();
-      reject(err);
+      fs.unlink(dest, () => reject(err));
     });
   });
 }
@@ -55,29 +68,60 @@ async function install() {
 
   fs.mkdirSync(binDir, { recursive: true });
 
-  if (info.ext === 'tar.xz') {
-    execSync(`tar -xJf "${archivePath}" -C "${binDir}" --strip-components=1`, { stdio: 'inherit' });
-  } else if (info.ext === 'zip') {
-    if (process.platform === 'win32') {
-      execSync(`powershell -Command "Expand-Archive -Path '${archivePath}' -DestinationPath '${binDir}' -Force"`, { stdio: 'inherit' });
-      // Move files from nested directory
-      const nested = path.join(binDir, `fresh-editor-${info.target}`);
-      if (fs.existsSync(nested)) {
-        fs.readdirSync(nested).forEach(f => {
-          fs.renameSync(path.join(nested, f), path.join(binDir, f));
-        });
-        fs.rmdirSync(nested);
+  try {
+    if (info.ext === 'tar.xz') {
+      execSync(`tar -xJf "${archivePath}" -C "${binDir}" --strip-components=1`, { stdio: 'inherit' });
+    } else if (info.ext === 'zip') {
+      if (process.platform === 'win32') {
+        // Use absolute paths with proper escaping for PowerShell
+        const absArchive = path.resolve(archivePath).replace(/\\/g, '\\\\');
+        const absBin = path.resolve(binDir).replace(/\\/g, '\\\\');
+        
+        execSync(
+          `powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "& {Expand-Archive -LiteralPath '${absArchive}' -DestinationPath '${absBin}' -Force}"`,
+          { stdio: 'inherit', windowsHide: true }
+        );
+        
+        // Move files from nested directory if present
+        const nested = path.join(binDir, `fresh-editor-${info.target}`);
+        if (fs.existsSync(nested)) {
+          const files = fs.readdirSync(nested);
+          for (const f of files) {
+            const srcPath = path.join(nested, f);
+            const destPath = path.join(binDir, f);
+            if (fs.existsSync(destPath)) {
+              fs.rmSync(destPath, { recursive: true, force: true });
+            }
+            fs.renameSync(srcPath, destPath);
+          }
+          fs.rmSync(nested, { recursive: true, force: true });
+        }
+      } else {
+        execSync(`unzip -o "${archivePath}" -d "${binDir}"`, { stdio: 'inherit' });
+        // Handle nested directory for non-Windows
+        const nested = path.join(binDir, `fresh-editor-${info.target}`);
+        if (fs.existsSync(nested)) {
+          execSync(`mv "${nested}"/* "${binDir}/" && rmdir "${nested}"`, { stdio: 'inherit' });
+        }
       }
-    } else {
-      execSync(`unzip -o "${archivePath}" -d "${binDir}"`, { stdio: 'inherit' });
+    }
+  } catch (error) {
+    console.error('Extraction failed:', error.message);
+    throw error;
+  } finally {
+    // Cleanup archive file
+    try {
+      if (fs.existsSync(archivePath)) {
+        fs.unlinkSync(archivePath);
+      }
+    } catch (e) {
+      console.warn('Could not delete archive file:', e.message);
     }
   }
 
-  fs.unlinkSync(archivePath);
-
   // Verify binary exists
   if (!fs.existsSync(binaryPath)) {
-    throw new Error(`Installation failed: binary not found at ${binaryPath}`);
+    throw new Error(`Installation failed: binary not found at ${binaryPath}. Please check the release assets.`);
   }
 
   console.log('fresh-editor installed successfully!');
