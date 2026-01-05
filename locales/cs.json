@@ -55,7 +55,6 @@
   "action.focus_file_explorer": "Zaměřit průzkumník souborů",
   "action.focus_terminal": "Zaměřit terminál",
   "action.format_buffer": "Formátovat buffer nakonfigurovaným formátovačem",
-  "action.goto_definition": "LSP: Přejít na definici",
   "action.goto_line": "Přejít na číslo řádku",
   "action.goto_matching_bracket": "Přejít na odpovídající závorku",
   "action.increase_split_size": "Zvětšit velikost rozdělení",

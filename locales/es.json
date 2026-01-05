@@ -55,7 +55,6 @@
   "action.focus_file_explorer": "Enfocar explorador de archivos",
   "action.focus_terminal": "Enfocar terminal",
   "action.format_buffer": "Formatear buffer con formateador configurado",
-  "action.goto_definition": "Ir a definición",
   "action.goto_line": "Ir a número de línea",
   "action.goto_matching_bracket": "Ir a paréntesis coincidente",
   "action.increase_split_size": "Aumentar tamaño de división",

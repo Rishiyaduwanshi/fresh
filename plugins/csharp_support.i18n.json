@@ -29,6 +29,12 @@
     "status.restore_failed": "Echec de la restauration NuGet: {error}",
     "status.restore_error": "Erreur de restauration NuGet: {error}"
   },
+  "it": {
+    "status.restoring_packages": "Ripristino pacchetti NuGet per {project}...",
+    "status.restore_completed": "Ripristino NuGet completato per {project}",
+    "status.restore_failed": "Ripristino NuGet fallito: {error}",
+    "status.restore_error": "Errore ripristino NuGet: {error}"
+  },
   "ja": {
     "status.restoring_packages": "{project}のNuGetパッケージを復元中...",
     "status.restore_completed": "{project}のNuGet復元が完了しました",

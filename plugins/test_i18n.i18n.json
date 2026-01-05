@@ -24,6 +24,11 @@
     "cmd.test_desc": "Une commande pour tester la localisation des plugins",
     "msg.hello": "Bonjour, %{name} ! Votre langue est %{locale}."
   },
+  "it": {
+    "cmd.test": "Comando di test localizzato",
+    "cmd.test_desc": "Un comando per testare la localizzazione dei plugin",
+    "msg.hello": "Ciao, %{name}! La tua lingua è %{locale}."
+  },
   "ja": {
     "cmd.test": "ローカライズテストコマンド",
     "cmd.test_desc": "プラグインのローカライズをテストするコマンド",

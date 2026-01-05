@@ -84,6 +84,23 @@
     "status.config_not_found": "Impossible de trouver la configuration .clangd dans l'espace de travail",
     "status.file_status": "Statut du fichier Clangd: {status}"
   },
+  "it": {
+    "cmd.project_setup": "Clangd: Configurazione progetto",
+    "cmd.project_setup_desc": "Analizza la disponibilità di clangd per C/C++ (compile_commands.json, .clangd)",
+    "cmd.switch_source_header": "Clangd: Passa a Sorgente/Header",
+    "cmd.switch_source_header_desc": "Passa alla coppia header/sorgente usando clangd",
+    "cmd.open_project_config": "Clangd: Apri configurazione progetto",
+    "cmd.open_project_config_desc": "Apri il file .clangd più vicino",
+    "status.plugin_loaded": "Plugin di supporto Clangd caricato (comandi passa a header + configurazione)",
+    "status.no_active_file": "Clangd: nessun file attivo per il cambio",
+    "status.unsupported_file_type": "Clangd: tipo di file non supportato per il cambio header",
+    "status.opened_corresponding_file": "Clangd: aperto file corrispondente",
+    "status.no_matching_found": "Clangd: nessuna corrispondenza header/sorgente trovata",
+    "status.switch_failed": "Cambio sorgente/header Clangd fallito: {error}",
+    "status.opened_config": "Configurazione .clangd aperta",
+    "status.config_not_found": "Impossibile trovare la configurazione .clangd nell'area di lavoro",
+    "status.file_status": "Stato del file Clangd: {status}"
+  },
   "ja": {
     "cmd.project_setup": "Clangd: プロジェクト設定",
     "cmd.project_setup_desc": "C/C++ clangdの準備状況を分析 (compile_commands.json, .clangd)",

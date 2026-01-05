@@ -89,6 +89,24 @@
     "text.greeting": "Bonjour depuis TypeScript! Le systeme de plugins fonctionne!",
     "text.comment": "// Ce commentaire a ete insere par un plugin TypeScript!"
   },
+  "it": {
+    "cmd.open_help": "Demo plugin: Apri aiuto",
+    "cmd.open_help_desc": "Apre la pagina di aiuto dell'editor (usa un'azione integrata)",
+    "cmd.save_file": "Demo plugin: Salva file",
+    "cmd.save_file_desc": "Salva il file corrente (usa un'azione integrata)",
+    "cmd.say_hello": "Demo plugin: Saluta",
+    "cmd.say_hello_desc": "Inserisce un saluto amichevole nel buffer",
+    "cmd.insert_time": "Demo plugin: Inserisci ora",
+    "cmd.insert_time_desc": "Inserisce l'ora corrente alla posizione del cursore",
+    "cmd.insert_comment": "Demo plugin: Inserisci commento",
+    "cmd.insert_comment_desc": "Inserisce un commento di esempio alla posizione del cursore",
+    "status.loaded": "I plugin funzionano! Plugin di benvenuto caricato con successo!",
+    "status.greeting_inserted": "Saluto inserito alla posizione del cursore",
+    "status.time_inserted": "Ora inserita alla posizione del cursore",
+    "status.comment_inserted": "Commento inserito dal plugin",
+    "text.greeting": "Ciao da TypeScript! Il sistema dei plugin funziona!",
+    "text.comment": "// Questo commento è stato inserito da un plugin TypeScript!"
+  },
   "ja": {
     "cmd.open_help": "プラグインデモ: ヘルプを開く",
     "cmd.open_help_desc": "エディタのヘルプページを開く（組み込みアクションを使用）",

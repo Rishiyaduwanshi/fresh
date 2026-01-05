@@ -34,6 +34,13 @@
     "status.no_file": "Git Gutter: Aucun fichier ouvert",
     "status.changes": "Git Gutter: %{count} modification(s) detectee(s)"
   },
+  "it": {
+    "cmd.refresh": "Git Gutter: Aggiorna",
+    "cmd.refresh_desc": "Aggiorna gli indicatori git gutter per il buffer corrente",
+    "status.ready": "Plugin Git Gutter pronto",
+    "status.no_file": "Git Gutter: Nessun file aperto",
+    "status.changes": "Git Gutter: rilevate %{count} modifiche"
+  },
   "ja": {
     "cmd.refresh": "Git Gutter: 更新",
     "cmd.refresh_desc": "現在のバッファのGit Gutterインジケーターを更新",

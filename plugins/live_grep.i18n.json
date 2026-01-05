@@ -64,6 +64,19 @@
     "status.cancelled": "Grep en direct annule",
     "prompt.live_grep": "Grep en direct : "
   },
+  "it": {
+    "cmd.live_grep": "Live Grep (Cerca nei file)",
+    "cmd.live_grep_desc": "Cerca testo nel progetto con anteprima in tempo reale",
+    "status.ready": "Live Grep pronto - usa la tavolozza comandi o associa 'start_live_grep'",
+    "status.type_to_search": "Scrivi per cercare (min 2 caratteri)...",
+    "status.found_matches": "Trovate {count} corrispondenze",
+    "status.no_matches": "Nessuna corrispondenza trovata",
+    "status.search_error": "Errore di ricerca: {error}",
+    "status.opened_file": "Aperto {file}:{line}",
+    "status.no_file_selected": "Nessun file selezionato",
+    "status.cancelled": "Live grep annullato",
+    "prompt.live_grep": "Live grep: "
+  },
   "ja": {
     "cmd.live_grep": "Live Grep (ファイル内検索)",
     "cmd.live_grep_desc": "プロジェクト全体をライブプレビュー付きで検索",

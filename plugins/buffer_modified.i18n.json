@@ -24,6 +24,11 @@
     "status.initialized": "Buffer Modified: initialisé pour %{path}",
     "status.cleared_on_save": "Buffer Modified: effacé lors de la sauvegarde"
   },
+  "it": {
+    "status.loaded": "Plugin Buffer Modified caricato",
+    "status.initialized": "Buffer Modified: inizializzato per %{path}",
+    "status.cleared_on_save": "Buffer Modified: cancellato al salvataggio"
+  },
   "ja": {
     "status.loaded": "Buffer Modifiedプラグインを読み込みました",
     "status.initialized": "Buffer Modified: %{path}を初期化しました",

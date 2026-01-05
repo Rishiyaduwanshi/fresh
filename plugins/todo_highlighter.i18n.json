@@ -69,6 +69,20 @@
     "status.loaded": "Plugin Surligneur TODO charge (TypeScript)",
     "status.keywords": "Mots-cles TODO: %{keywords}"
   },
+  "it": {
+    "cmd.enable": "Evidenziatore TODO: Attiva",
+    "cmd.enable_desc": "Attiva l'evidenziazione delle parole chiave TODO",
+    "cmd.disable": "Evidenziatore TODO: Disattiva",
+    "cmd.disable_desc": "Disattiva l'evidenziazione delle parole chiave TODO",
+    "cmd.toggle": "Evidenziatore TODO: Alterna",
+    "cmd.toggle_desc": "Alterna l'evidenziazione delle parole chiave TODO",
+    "cmd.show_keywords": "Evidenziatore TODO: Mostra parole chiave",
+    "cmd.show_keywords_desc": "Mostra le parole chiave attualmente monitorate",
+    "status.enabled": "Evidenziatore TODO: Attivato",
+    "status.disabled": "Evidenziatore TODO: Disattivato",
+    "status.loaded": "Plugin Evidenziatore TODO caricato (TypeScript)",
+    "status.keywords": "Parole chiave TODO: %{keywords}"
+  },
   "ja": {
     "cmd.enable": "TODOハイライター: 有効化",
     "cmd.enable_desc": "TODOキーワードのハイライトを有効化",

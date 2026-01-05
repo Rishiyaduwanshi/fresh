@@ -182,6 +182,7 @@ pub fn locale_display_name(locale: &str) -> Option<(&'static str, &'static str)>
         "en" => Some(("English", "English")),
         "es" => Some(("Spanish", "Español")),
         "fr" => Some(("French", "Français")),
+        "it" => Some(("Italian", "Italiano")),
         "ja" => Some(("Japanese", "日本語")),
         "ko" => Some(("Korean", "한국어")),
         "pt-BR" => Some(("Portuguese (Brazil)", "Português (Brasil)")),

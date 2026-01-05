@@ -84,6 +84,23 @@
     "suggestion.standard": "Standard - largeur par defaut",
     "suggestion.wide": "Large - plus de contenu par ligne"
   },
+  "it": {
+    "cmd.toggle_compose": "Markdown: Alterna Composizione",
+    "cmd.toggle_compose_desc": "Alterna la modalità composizione (a capo automatico, margini centrati)",
+    "cmd.set_compose_width": "Markdown: Imposta Larghezza Composizione",
+    "cmd.set_compose_width_desc": "Imposta la larghezza per l'andata a capo e i margini della modalità composizione",
+    "status.plugin_ready": "Plugin Markdown pronto",
+    "status.not_markdown_file": "Non è un file Markdown",
+    "status.compose_off": "Composizione Markdown: OFF",
+    "status.compose_on": "Composizione Markdown: ON (a capo automatico, centrato)",
+    "status.width_set": "Larghezza composizione Markdown impostata a {width}",
+    "status.invalid_width": "Larghezza non valida - deve essere compresa tra 20 e 300",
+    "prompt.compose_width": "Larghezza composizione: ",
+    "suggestion.narrow": "Stretto - ottimo per i pannelli laterali",
+    "suggestion.classic": "Classico - larghezza terminale tradizionale",
+    "suggestion.standard": "Standard - larghezza predefinita",
+    "suggestion.wide": "Largo - più contenuto per riga"
+  },
   "ja": {
     "cmd.toggle_compose": "Markdown: 作成モード切り替え",
     "cmd.toggle_compose_desc": "作成モードを切り替え (ソフトラップ、中央揃えマージン)",

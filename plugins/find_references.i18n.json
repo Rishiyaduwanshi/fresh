@@ -104,6 +104,27 @@
     "panel.no_references": "Aucune reference trouvee",
     "panel.help": "[Haut/Bas] naviguer  [RET] sauter  [q/Esc] fermer"
   },
+  "it": {
+    "cmd.show_references": "Mostra pannello riferimenti",
+    "cmd.show_references_desc": "Visualizza i riferimenti correnti",
+    "cmd.hide_references": "Nascondi pannello riferimenti",
+    "cmd.hide_references_desc": "Chiudi il pannello riferimenti",
+    "status.ready": "Plugin Trova riferimenti caricato",
+    "status.no_references": "Nessun riferimento trovato per '{symbol}'",
+    "status.found_references": "Trovati {count} riferimenti{limit} - Su/Giù naviga, RET vai a, q chiudi",
+    "status.showing_first": " (visualizzati i primi {max})",
+    "status.reference_index": "Riferimento {current}/{total}",
+    "status.jumped_to": "Passato a {file}:{line}",
+    "status.no_references_to_jump": "Nessun riferimento a cui passare",
+    "status.source_split_unavailable": "Split sorgente non disponibile",
+    "status.move_cursor": "Sposta il cursore su una riga di riferimento",
+    "status.closed": "Pannello riferimenti chiuso",
+    "status.failed_open_panel": "Impossibile aprire il pannello riferimenti",
+    "panel.header": "Riferimenti a {symbol} ({count}{limit})",
+    "panel.limited": ", limitati a {max}",
+    "panel.no_references": "Nessun riferimento trovato",
+    "panel.help": "[Su/Giù] naviga  [RET] vai a  [q/Esc] chiudi"
+  },
   "ja": {
     "cmd.show_references": "参照パネルを表示",
     "cmd.show_references_desc": "現在の参照を表示",

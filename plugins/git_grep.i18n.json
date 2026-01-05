@@ -64,6 +64,19 @@
     "status.no_selection": "Aucun fichier selectionne",
     "status.cancelled": "Git grep annule"
   },
+  "it": {
+    "cmd.grep": "Git Grep",
+    "cmd.grep_desc": "Cerca testo nei file tracciati da git",
+    "prompt.grep": "Git grep: ",
+    "status.ready": "Plugin Git Grep pronto",
+    "status.type_to_search": "Scrivi per cercare...",
+    "status.found": "Trovate %{count} corrispondenze",
+    "status.no_matches": "Nessuna corrispondenza trovata",
+    "status.error": "Errore git grep: %{error}",
+    "status.opened": "Aperto %{location}",
+    "status.no_selection": "Nessun file selezionato",
+    "status.cancelled": "Git grep annullato"
+  },
   "ja": {
     "cmd.grep": "Git Grep",
     "cmd.grep_desc": "Git追跡ファイル内でテキストを検索",

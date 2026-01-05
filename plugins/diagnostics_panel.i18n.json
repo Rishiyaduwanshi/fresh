@@ -89,6 +89,24 @@
     "panel.all_files": "Tous les Fichiers",
     "panel.current_file": "Fichier Actuel"
   },
+  "it": {
+    "cmd.show_diagnostics_panel": "Mostra pannello diagnostica",
+    "cmd.show_diagnostics_panel_desc": "Apri il pannello diagnostica",
+    "cmd.toggle_diagnostics_panel": "Alterna pannello diagnostica",
+    "cmd.toggle_diagnostics_panel_desc": "Alterna la visualizzazione del pannello diagnostica",
+    "status.loaded": "Plugin pannello diagnostica caricato",
+    "status.failed_to_open": "Impossibile aprire il pannello diagnostica",
+    "status.closed": "Pannello diagnostica chiuso",
+    "status.jumped_to": "Passato a {file}:{line}",
+    "status.move_to_diagnostic": "Sposta il cursore su una riga di diagnostica",
+    "status.showing": "Visualizzazione: {label}",
+    "status.refreshed": "Diagnostica aggiornata",
+    "status.diagnostics_count": "Diagnostica: {count} elementi | a: alterna filtro | RET: vai a | q: chiudi",
+    "panel.header": "Diagnostica ({filter}):",
+    "panel.no_diagnostics": "Nessuna diagnostica",
+    "panel.all_files": "Tutti i file",
+    "panel.current_file": "File corrente"
+  },
   "ja": {
     "cmd.show_diagnostics_panel": "診断パネルを表示",
     "cmd.show_diagnostics_panel_desc": "診断パネルを開く",

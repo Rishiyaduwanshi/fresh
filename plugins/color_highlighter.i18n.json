@@ -54,6 +54,17 @@
     "status.disabled": "Surligneur de Couleurs: Desactive",
     "status.loaded": "Plugin Surligneur de Couleurs charge"
   },
+  "it": {
+    "cmd.enable": "Evidenziatore colori: Attiva",
+    "cmd.enable_desc": "Attiva l'evidenziazione dei codici colore con campioni",
+    "cmd.disable": "Evidenziatore colori: Disattiva",
+    "cmd.disable_desc": "Disattiva l'evidenziazione dei codici colore",
+    "cmd.toggle": "Evidenziatore colori: Alterna",
+    "cmd.toggle_desc": "Alterna l'evidenziazione dei codici colore",
+    "status.enabled": "Evidenziatore colori: Attivato",
+    "status.disabled": "Evidenziatore colori: Disattivato",
+    "status.loaded": "Plugin Evidenziatore colori caricato"
+  },
   "ja": {
     "cmd.enable": "カラーハイライター: 有効化",
     "cmd.enable_desc": "カラーコードのハイライトとスウォッチ表示を有効化",

@@ -34,6 +34,13 @@
     "status.opened": "Calculatrice ouverte",
     "status.copied": "Copie: {value}"
   },
+  "it": {
+    "cmd.calculator": "Calcolatrice",
+    "cmd.calculator_desc": "Apri calcolatrice",
+    "status.loaded": "Plugin calcolatrice caricato",
+    "status.opened": "Calcolatrice aperta",
+    "status.copied": "Copiato: {value}"
+  },
   "ja": {
     "cmd.calculator": "電卓",
     "cmd.calculator_desc": "電卓を開く",

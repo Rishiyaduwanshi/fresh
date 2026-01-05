@@ -29,6 +29,12 @@
     "suggestion.new_file": "%{filename} (nouveau fichier)",
     "suggestion.new_file_desc": "Le fichier n'existe pas encore"
   },
+  "it": {
+    "status.loaded": "Plugin completamento percorsi caricato con successo",
+    "suggestion.directory": "directory",
+    "suggestion.new_file": "%{filename} (nuovo file)",
+    "suggestion.new_file_desc": "Il file non esiste ancora"
+  },
   "ja": {
     "status.loaded": "パス補完プラグインを正常に読み込みました",
     "suggestion.directory": "ディレクトリ",
