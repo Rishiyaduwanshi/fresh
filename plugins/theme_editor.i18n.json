@@ -85,6 +85,7 @@
     "panel.action_hint": "%{open}: open | %{save}: save | %{save_as}: save as | %{delete}: delete | %{close}: quit | %{help}: help",
 
     "prompt.open_theme": "Open theme: ",
+    "prompt.select_theme_to_edit": "Select theme to edit: ",
     "prompt.theme_name": "Theme name: ",
     "prompt.save_as": "Save theme as: ",
     "prompt.color_input": "%{field} (#RRGGBB or named): ",
@@ -97,7 +98,9 @@
 
     "suggestion.current": "(current)",
     "suggestion.builtin_theme": "Built-in theme",
+    "suggestion.builtin_theme_current": "Built-in theme (current)",
     "suggestion.user_theme": "User theme",
+    "suggestion.user_theme_current": "User theme (current)",
     "suggestion.builtin": "Built-in",
     "suggestion.terminal_native": "Use terminal's native color",
 
@@ -330,6 +333,8 @@
     "panel.nav_hint": "arriba/abajo: navegar | RET/SPC: editar color | TAB: expandir/contraer",
     "panel.action_hint": "%{open}: abrir | %{save}: guardar | %{save_as}: guardar como | %{delete}: eliminar | %{close}: salir | %{help}: ayuda",
 
+    "prompt.open_theme": "Abrir tema: ",
+    "prompt.select_theme_to_edit": "Seleccionar tema para editar: ",
     "prompt.copy_theme": "Copiar de tema: ",
     "prompt.edit_theme": "Editar tema de usuario: ",
     "prompt.theme_name": "Nombre del tema: ",
@@ -345,7 +350,9 @@
 
     "suggestion.current": "(actual)",
     "suggestion.builtin_theme": "Tema predefinido",
+    "suggestion.builtin_theme_current": "Tema predefinido (actual)",
     "suggestion.user_theme": "Tema de usuario",
+    "suggestion.user_theme_current": "Tema de usuario (actual)",
     "suggestion.builtin": "Predefinido",
     "suggestion.terminal_native": "Usar color nativo de la terminal",
 
@@ -579,6 +586,7 @@
     "panel.action_hint": "%{open}: oeffnen | %{save}: speichern | %{save_as}: speichern unter | %{delete}: loeschen | %{close}: beenden | %{help}: Hilfe",
 
     "prompt.open_theme": "Theme oeffnen: ",
+    "prompt.select_theme_to_edit": "Theme zum Bearbeiten auswählen: ",
     "prompt.theme_name": "Theme-Name: ",
     "prompt.save_as": "Theme speichern als: ",
     "prompt.set_default": "Standard-Theme festlegen: ",
@@ -592,6 +600,9 @@
 
     "suggestion.current": "(aktuell)",
     "suggestion.builtin_theme": "Eingebautes Theme",
+    "suggestion.builtin_theme_current": "Eingebautes Theme (aktuell)",
+    "suggestion.user_theme": "Benutzer-Theme",
+    "suggestion.user_theme_current": "Benutzer-Theme (aktuell)",
     "suggestion.builtin": "Eingebaut",
     "suggestion.terminal_native": "Native Terminal-Farbe verwenden",
 
@@ -825,6 +836,7 @@
     "panel.action_hint": "%{open}: ouvrir | %{save}: enregistrer | %{save_as}: enregistrer sous | %{delete}: supprimer | %{close}: quitter | %{help}: aide",
 
     "prompt.open_theme": "Ouvrir le theme: ",
+    "prompt.select_theme_to_edit": "Sélectionner le thème à modifier: ",
     "prompt.theme_name": "Nom du theme: ",
     "prompt.save_as": "Enregistrer le theme sous: ",
     "prompt.set_default": "Definir le theme par defaut: ",
@@ -838,6 +850,9 @@
 
     "suggestion.current": "(actuel)",
     "suggestion.builtin_theme": "Theme integre",
+    "suggestion.builtin_theme_current": "Theme integre (actuel)",
+    "suggestion.user_theme": "Theme utilisateur",
+    "suggestion.user_theme_current": "Theme utilisateur (actuel)",
     "suggestion.builtin": "Integre",
     "suggestion.terminal_native": "Utiliser la couleur native du terminal",
 
@@ -1071,6 +1086,7 @@
     "panel.action_hint": "%{open}: 開く | %{save}: 保存 | %{save_as}: 別名保存 | %{delete}: 削除 | %{close}: 終了 | %{help}: ヘルプ",
 
     "prompt.open_theme": "テーマを開く: ",
+    "prompt.select_theme_to_edit": "編集するテーマを選択: ",
     "prompt.theme_name": "テーマ名: ",
     "prompt.save_as": "テーマを保存: ",
     "prompt.set_default": "デフォルトテーマを設定: ",
@@ -1084,6 +1100,9 @@
 
     "suggestion.current": "(現在)",
     "suggestion.builtin_theme": "組み込みテーマ",
+    "suggestion.builtin_theme_current": "組み込みテーマ (現在)",
+    "suggestion.user_theme": "ユーザーテーマ",
+    "suggestion.user_theme_current": "ユーザーテーマ (現在)",
     "suggestion.builtin": "組み込み",
     "suggestion.terminal_native": "ターミナルのネイティブカラーを使用",
 
@@ -1317,6 +1336,7 @@
     "panel.action_hint": "%{open}: 打开 | %{save}: 保存 | %{save_as}: 另存为 | %{delete}: 删除 | %{close}: 退出 | %{help}: 帮助",
 
     "prompt.open_theme": "打开主题: ",
+    "prompt.select_theme_to_edit": "选择要编辑的主题: ",
     "prompt.theme_name": "主题名称: ",
     "prompt.save_as": "保存主题为: ",
     "prompt.set_default": "设置默认主题: ",
@@ -1330,6 +1350,9 @@
 
     "suggestion.current": "(当前)",
     "suggestion.builtin_theme": "内置主题",
+    "suggestion.builtin_theme_current": "内置主题 (当前)",
+    "suggestion.user_theme": "用户主题",
+    "suggestion.user_theme_current": "用户主题 (当前)",
     "suggestion.builtin": "内置",
     "suggestion.terminal_native": "使用终端原生颜色",
 

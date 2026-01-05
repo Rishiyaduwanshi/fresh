@@ -628,6 +628,21 @@ function buildDisplayEntries(): TextPropertyEntry[] {
     });
   }
 
+  // Key hints at the top (moved from footer)
+  entries.push({
+    text: editor.t("panel.nav_hint") + "\n",
+    properties: { type: "footer" },
+  });
+  entries.push({
+    text: editor.t("panel.action_hint", SHORTCUTS) + "\n",
+    properties: { type: "footer" },
+  });
+
+  entries.push({
+    text: "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n",
+    properties: { type: "separator" },
+  });
+
   entries.push({
     text: "\n",
     properties: { type: "blank" },
@@ -684,20 +699,6 @@ function buildDisplayEntries(): TextPropertyEntry[] {
       properties: { type: "blank" },
     });
   }
-
-  // Footer
-  entries.push({
-    text: "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n",
-    properties: { type: "separator" },
-  });
-  entries.push({
-    text: editor.t("panel.nav_hint") + "\n",
-    properties: { type: "footer" },
-  });
-  entries.push({
-    text: editor.t("panel.action_hint", SHORTCUTS) + "\n",
-    properties: { type: "footer" },
-  });
 
   return entries;
 }
@@ -1102,7 +1103,83 @@ globalThis.onThemePromptCancelled = function(args: { prompt_type: string }): boo
   return true;
 };
 
+/**
+ * Handle initial theme selection prompt (when opening editor)
+ */
+globalThis.onThemeSelectInitialPromptConfirmed = async function(args: {
+  prompt_type: string;
+  selected_index: number | null;
+  input: string;
+}): Promise<boolean> {
+  if (args.prompt_type !== "theme-select-initial") return true;
+
+  const value = args.input.trim();
+
+  // Parse the value to determine if it's user or builtin
+  let isBuiltin = false;
+  let themeName = value;
+
+  if (value.startsWith("user:")) {
+    themeName = value.slice(5);
+    isBuiltin = false;
+  } else if (value.startsWith("builtin:")) {
+    themeName = value.slice(8);
+    isBuiltin = true;
+  } else {
+    // Fallback: check if it's a builtin theme
+    isBuiltin = state.builtinThemes.includes(value);
+  }
+
+  editor.setStatus(editor.t("status.loading"));
+
+  if (isBuiltin) {
+    // Load builtin theme
+    const themeData = await loadThemeFile(themeName);
+    if (themeData) {
+      state.themeData = deepClone(themeData);
+      state.originalThemeData = deepClone(themeData);
+      state.themeName = themeName;
+      state.themePath = null; // No user path for builtin
+      state.isBuiltin = true;
+      state.hasChanges = false;
+    } else {
+      // Fallback to default theme if load failed
+      state.themeData = createDefaultTheme();
+      state.originalThemeData = deepClone(state.themeData);
+      state.themeName = themeName;
+      state.themePath = null;
+      state.isBuiltin = true;
+      state.hasChanges = false;
+    }
+  } else {
+    // Load user theme
+    const result = await loadUserThemeFile(themeName);
+    if (result) {
+      state.themeData = deepClone(result.data);
+      state.originalThemeData = deepClone(result.data);
+      state.themeName = themeName;
+      state.themePath = result.path;
+      state.isBuiltin = false;
+      state.hasChanges = false;
+    } else {
+      // Fallback to default theme if load failed
+      state.themeData = createDefaultTheme();
+      state.originalThemeData = deepClone(state.themeData);
+      state.themeName = themeName;
+      state.themePath = null;
+      state.isBuiltin = false;
+      state.hasChanges = false;
+    }
+  }
+
+  // Now open the editor with loaded theme
+  await doOpenThemeEditor();
+
+  return true;
+};
+
 // Register prompt handlers
+editor.on("prompt_confirmed", "onThemeSelectInitialPromptConfirmed");
 editor.on("prompt_confirmed", "onThemeColorPromptConfirmed");
 editor.on("prompt_confirmed", "onThemeOpenPromptConfirmed");
 editor.on("prompt_confirmed", "onThemeSaveAsPromptConfirmed");
@@ -1540,15 +1617,13 @@ globalThis.theme_editor_nav_prev_section = function(): void {
 // =============================================================================
 
 /**
- * Open the theme editor
+ * Open the theme editor - prompts user to select theme first
  */
 globalThis.open_theme_editor = async function(): Promise<void> {
   if (state.isOpen) {
     editor.setStatus(editor.t("status.already_open"));
     return;
   }
-
-  editor.setStatus(editor.t("status.loading"));
 
   // Save context
   state.sourceSplitId = editor.getActiveSplitId();
@@ -1557,13 +1632,52 @@ globalThis.open_theme_editor = async function(): Promise<void> {
   // Load available themes
   state.builtinThemes = await loadBuiltinThemes();
 
-  // Create default theme data
-  state.themeData = createDefaultTheme();
-  state.originalThemeData = deepClone(state.themeData);
-  state.themeName = "custom";
-  state.themePath = null;
-  state.hasChanges = false;
+  // Get current theme name from config
+  const config = editor.getConfig() as Record<string, unknown>;
+  const currentThemeName = (config?.theme as string) || "dark";
 
+  // Prompt user to select which theme to edit
+  editor.startPrompt(editor.t("prompt.select_theme_to_edit"), "theme-select-initial");
+
+  const suggestions: PromptSuggestion[] = [];
+
+  // Add user themes first
+  const userThemes = listUserThemes();
+  for (const name of userThemes) {
+    const isCurrent = name === currentThemeName;
+    suggestions.push({
+      text: name,
+      description: isCurrent ? editor.t("suggestion.user_theme_current") : editor.t("suggestion.user_theme"),
+      value: `user:${name}`,
+    });
+  }
+
+  // Add built-in themes
+  for (const name of state.builtinThemes) {
+    const isCurrent = name === currentThemeName;
+    suggestions.push({
+      text: name,
+      description: isCurrent ? editor.t("suggestion.builtin_theme_current") : editor.t("suggestion.builtin_theme"),
+      value: `builtin:${name}`,
+    });
+  }
+
+  // Sort suggestions to put current theme first
+  suggestions.sort((a, b) => {
+    const aIsCurrent = a.description.includes("current");
+    const bIsCurrent = b.description.includes("current");
+    if (aIsCurrent && !bIsCurrent) return -1;
+    if (!aIsCurrent && bIsCurrent) return 1;
+    return 0;
+  });
+
+  editor.setPromptSuggestions(suggestions);
+};
+
+/**
+ * Actually open the theme editor with loaded theme data
+ */
+async function doOpenThemeEditor(): Promise<void> {
   // Build initial entries
   const entries = buildDisplayEntries();
 
@@ -1590,7 +1704,7 @@ globalThis.open_theme_editor = async function(): Promise<void> {
   } else {
     editor.setStatus(editor.t("status.open_failed"));
   }
-};
+}
 
 /**
  * Close the theme editor
