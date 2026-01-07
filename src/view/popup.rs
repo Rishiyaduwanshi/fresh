@@ -735,9 +735,9 @@ impl Popup {
                 // Word-wrap styled lines to fit content area width
                 let wrapped_lines = wrap_styled_lines(styled_lines, content_area.width as usize);
 
-                // Collect link positions for OSC 8 hyperlink rendering
-                // Each entry: (line_index, col_start, col_end, url)
-                let mut link_positions: Vec<(usize, usize, usize, String)> = Vec::new();
+                // Collect link overlay info for OSC 8 rendering after the main draw
+                // Each entry: (visible_line_idx, start_column, link_text, url)
+                let mut link_overlays: Vec<(usize, usize, String, String)> = Vec::new();
 
                 let visible_lines: Vec<Line> = wrapped_lines
                     .iter()
@@ -752,12 +752,11 @@ impl Popup {
                             .map(|s| {
                                 let span_width =
                                     unicode_width::UnicodeWidthStr::width(s.text.as_str());
-                                // Track link positions for OSC 8 rendering
                                 if let Some(url) = &s.link_url {
-                                    link_positions.push((
+                                    link_overlays.push((
                                         line_idx,
                                         col,
-                                        col + span_width,
+                                        s.text.clone(),
                                         url.clone(),
                                     ));
                                 }
@@ -772,25 +771,16 @@ impl Popup {
                 let paragraph = Paragraph::new(visible_lines);
                 frame.render_widget(paragraph, content_area);
 
-                // Apply OSC 8 hyperlinks to the buffer cells
-                // This follows the approach from ratatui's hyperlink example
+                // Apply OSC 8 hyperlinks following Ratatui's official workaround
                 let buffer = frame.buffer_mut();
-                for (line_idx, col_start, col_end, url) in link_positions {
+                let max_x = content_area.x + content_area.width;
+                for (line_idx, col_start, text, url) in link_overlays {
                     let y = content_area.y + line_idx as u16;
                     if y >= content_area.y + content_area.height {
                         continue;
                     }
-                    for col in col_start..col_end {
-                        let x = content_area.x + col as u16;
-                        if x >= content_area.x + content_area.width {
-                            break;
-                        }
-                        let cell = &mut buffer[(x, y)];
-                        let symbol = cell.symbol().to_string();
-                        // Wrap each character with OSC 8 escape sequence
-                        let hyperlink = format!("\x1B]8;;{}\x07{}\x1B]8;;\x07", url, symbol);
-                        cell.set_symbol(hyperlink.as_str());
-                    }
+                    let start_x = content_area.x + col_start as u16;
+                    apply_hyperlink_overlay(buffer, start_x, y, max_x, &text, &url);
                 }
             }
             PopupContent::List { items, selected } => {
@@ -961,6 +951,47 @@ impl PopupManager {
 impl Default for PopupManager {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+/// Overlay OSC 8 hyperlinks in 2-character chunks to keep text layout aligned.
+///
+/// This mirrors the approach used in Ratatui's official hyperlink example to
+/// work around Crossterm width accounting bugs for OSC sequences.
+fn apply_hyperlink_overlay(
+    buffer: &mut ratatui::buffer::Buffer,
+    start_x: u16,
+    y: u16,
+    max_x: u16,
+    text: &str,
+    url: &str,
+) {
+    let mut chunk_index = 0u16;
+    let mut chars = text.chars();
+
+    loop {
+        let mut chunk = String::new();
+        for _ in 0..2 {
+            if let Some(ch) = chars.next() {
+                chunk.push(ch);
+            } else {
+                break;
+            }
+        }
+
+        if chunk.is_empty() {
+            break;
+        }
+
+        let x = start_x + chunk_index * 2;
+        if x >= max_x {
+            break;
+        }
+
+        let hyperlink = format!("\x1B]8;;{}\x07{}\x1B]8;;\x07", url, chunk);
+        buffer[(x, y)].set_symbol(&hyperlink);
+
+        chunk_index += 1;
     }
 }
 
@@ -1160,5 +1191,30 @@ mod tests {
         assert_eq!(clamped.y, 49); // y clamped to last valid position
         assert_eq!(clamped.width, 1); // width clamped to fit
         assert_eq!(clamped.height, 1); // height clamped to fit
+    }
+
+    #[test]
+    fn hyperlink_overlay_chunks_pairs() {
+        use ratatui::{buffer::Buffer, layout::Rect};
+
+        let mut buffer = Buffer::empty(Rect::new(0, 0, 10, 1));
+        buffer[(0, 0)].set_symbol("P");
+        buffer[(1, 0)].set_symbol("l");
+        buffer[(2, 0)].set_symbol("a");
+        buffer[(3, 0)].set_symbol("y");
+
+        apply_hyperlink_overlay(&mut buffer, 0, 0, 10, "Play", "https://example.com");
+
+        let first = buffer[(0, 0)].symbol().to_string();
+        let second = buffer[(2, 0)].symbol().to_string();
+
+        assert!(
+            first.contains("Pl"),
+            "first chunk should contain 'Pl', got {first:?}"
+        );
+        assert!(
+            second.contains("ay"),
+            "second chunk should contain 'ay', got {second:?}"
+        );
     }
 }
