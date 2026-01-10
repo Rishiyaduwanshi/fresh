@@ -7,6 +7,18 @@ const { getBinaryInfo } = require('./binary');
 const VERSION = require('./package.json').version;
 const REPO = 'sinelaw/fresh';
 
+// Retry helper for Windows file locking issues
+async function withRetry(fn, retries = 5) {
+    for (let i = 0; i < retries; i++) {
+        try {
+            return await fn();
+        } catch (e) {
+            if (i === retries - 1) throw e;
+            await new Promise(r => setTimeout(r, 100 * (i + 1)));
+        }
+    }
+}
+
 function download(url, dest) {
     return new Promise((resolve, reject) => {
         const file = fs.createWriteStream(dest);
@@ -36,8 +48,8 @@ function download(url, dest) {
                 file.close((err) => {
                     if (err) reject(err);
                     else if (process.platform === 'win32') {
-                        // Wait briefly on Windows to ensure file handle is fully released
-                        setTimeout(resolve, 100);
+                        // Brief delay on Windows to ensure file handle is released
+                        setTimeout(resolve, 50);
                     } else {
                         resolve();
                     }
@@ -70,55 +82,66 @@ async function install() {
 
     fs.mkdirSync(binDir, { recursive: true });
 
+    // Extract with retry logic to handle Windows file locking
     try {
-        if (info.ext === 'tar.xz') {
-            execSync(`tar -xJf "${archivePath}" -C "${binDir}" --strip-components=1`, { stdio: 'inherit' });
-        } else if (info.ext === 'zip') {
-            if (process.platform === 'win32') {
-                // Use absolute paths for PowerShell with -LiteralPath
-                const absArchive = path.resolve(archivePath);
-                const absBin = path.resolve(binDir);
+        await withRetry(async () => {
+            if (info.ext === 'tar.xz') {
+                execSync(`tar -xJf "${archivePath}" -C "${binDir}" --strip-components=1`, { stdio: 'inherit' });
+            } else if (info.ext === 'zip') {
+                if (process.platform === 'win32') {
+                    // Use absolute paths for PowerShell with -LiteralPath
+                    const absArchive = path.resolve(archivePath);
+                    const absBin = path.resolve(binDir);
 
-                execSync(
-                    `powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "& {Expand-Archive -LiteralPath '${absArchive}' -DestinationPath '${absBin}' -Force}"`,
-                    { stdio: 'inherit', windowsHide: true }
-                );
+                    execSync(
+                        `powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "& {Expand-Archive -LiteralPath '${absArchive}' -DestinationPath '${absBin}' -Force}"`,
+                        { stdio: 'inherit', windowsHide: true }
+                    );
 
-                // Move files from nested directory if present
-                const nested = path.join(binDir, `fresh-editor-${info.target}`);
-                if (fs.existsSync(nested)) {
-                    const files = fs.readdirSync(nested);
-                    for (const f of files) {
-                        const srcPath = path.join(nested, f);
-                        const destPath = path.join(binDir, f);
-                        if (fs.existsSync(destPath)) {
-                            fs.rmSync(destPath, { recursive: true, force: true });
+                    // Move files from nested directory if present
+                    const nested = path.join(binDir, `fresh-editor-${info.target}`);
+                    if (fs.existsSync(nested)) {
+                        const files = fs.readdirSync(nested);
+                        for (const f of files) {
+                            const srcPath = path.join(nested, f);
+                            const destPath = path.join(binDir, f);
+                            if (fs.existsSync(destPath)) {
+                                fs.rmSync(destPath, { recursive: true, force: true });
+                            }
+                            fs.renameSync(srcPath, destPath);
                         }
-                        fs.renameSync(srcPath, destPath);
+                        fs.rmSync(nested, { recursive: true, force: true });
                     }
-                    fs.rmSync(nested, { recursive: true, force: true });
-                }
-            } else {
-                execSync(`unzip -o "${archivePath}" -d "${binDir}"`, { stdio: 'inherit' });
-                // Handle nested directory for non-Windows
-                const nested = path.join(binDir, `fresh-editor-${info.target}`);
-                if (fs.existsSync(nested)) {
-                    execSync(`mv "${nested}"/* "${binDir}/" && rmdir "${nested}"`, { stdio: 'inherit' });
+                } else {
+                    execSync(`unzip -o "${archivePath}" -d "${binDir}"`, { stdio: 'inherit' });
+                    // Handle nested directory for non-Windows
+                    const nested = path.join(binDir, `fresh-editor-${info.target}`);
+                    if (fs.existsSync(nested)) {
+                        const files = fs.readdirSync(nested);
+                        for (const f of files) {
+                            const srcPath = path.join(nested, f);
+                            const destPath = path.join(binDir, f);
+                            if (fs.existsSync(destPath)) {
+                                fs.rmSync(destPath, { recursive: true, force: true });
+                            }
+                            fs.renameSync(srcPath, destPath);
+                        }
+                        fs.rmdirSync(nested);
+                    }
                 }
             }
-        }
+        });
     } catch (error) {
-        console.error('Extraction failed:', error.message);
-        throw error;
-    } finally {
-        // Cleanup archive file
-        try {
-            if (fs.existsSync(archivePath)) {
-                fs.unlinkSync(archivePath);
-            }
-        } catch (e) {
-            console.warn('Could not delete archive file:', e.message);
+        throw new Error(`Extraction failed after retries: ${error.message}. Archive: ${archivePath}`);
+    }
+
+    // Cleanup archive file
+    try {
+        if (fs.existsSync(archivePath)) {
+            fs.unlinkSync(archivePath);
         }
+    } catch (e) {
+        console.warn('Could not delete archive file:', e.message);
     }
 
     // Verify binary exists
