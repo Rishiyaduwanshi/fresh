@@ -609,6 +609,13 @@ impl Editor {
             return;
         }
 
+        // Debug: log raw hover content to diagnose formatting issues
+        tracing::debug!(
+            "LSP hover content (markdown={}):\n{}",
+            is_markdown,
+            contents
+        );
+
         // Convert LSP range to byte offsets for highlighting
         if let Some(((start_line, start_char), (end_line, end_char))) = range {
             let state = self.active_state();

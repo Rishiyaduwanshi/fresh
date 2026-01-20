@@ -535,19 +535,19 @@ pub fn parse_markdown(
                 }
             }
             Event::Code(code) => {
-                // Inline code
+                // Inline code - render with background styling (no backticks needed)
                 let style = Style::default()
                     .fg(theme.help_key_fg)
                     .bg(theme.inline_code_bg);
                 if let Some(line) = lines.last_mut() {
-                    line.push(format!("`{}`", code), style);
+                    line.push(code.to_string(), style);
                 }
             }
             Event::SoftBreak => {
-                // Soft break - add space
-                if let Some(line) = lines.last_mut() {
-                    line.push(" ".to_string(), Style::default());
-                }
+                // Soft break - preserve as newline for better docstring/hover formatting
+                // (Standard markdown renders soft breaks as spaces, but for LSP hover
+                // content which often contains formatted docstrings, newlines are better)
+                lines.push(StyledLine::new());
             }
             Event::HardBreak => {
                 // Hard break - new line
@@ -665,7 +665,8 @@ mod tests {
         let lines = parse_markdown("Use `println!` to print", &theme, None);
 
         assert_eq!(lines.len(), 1);
-        assert_eq!(get_line_text(&lines[0]), "Use `println!` to print");
+        // Inline code is rendered without backticks (styling indicates it's code)
+        assert_eq!(get_line_text(&lines[0]), "Use println! to print");
 
         // Inline code should have background color
         let code_span = lines[0].spans.iter().find(|s| s.text.contains("println"));
@@ -896,21 +897,21 @@ mod tests {
     }
 
     #[test]
-    fn test_soft_break_becomes_space() {
+    fn test_soft_break_becomes_newline() {
         let theme = Theme::load_builtin(theme::THEME_DARK).unwrap();
         // Single newline in markdown is a soft break
         let lines = parse_markdown("Line one\nLine two", &theme, None);
 
-        // Soft break should become a space, keeping content on same paragraph
+        // Soft break should become a newline for better docstring/hover formatting
+        assert!(
+            lines.len() >= 2,
+            "Soft break should create separate lines, got {} lines",
+            lines.len()
+        );
         let all_text: String = lines.iter().map(get_line_text).collect();
         assert!(
             all_text.contains("one") && all_text.contains("two"),
             "Should contain both lines"
-        );
-        // With soft break converted to space, they should be joined
-        assert!(
-            all_text.contains("one ") || all_text.contains(" two"),
-            "Soft break should be converted to space"
         );
     }
 
@@ -976,6 +977,22 @@ mod tests {
         assert!(
             all_text.contains("PurePath subclass"),
             "Should contain docstring"
+        );
+    }
+
+    #[test]
+    fn test_python_docstring_formatting() {
+        // Test Python-style docstring with keyword arguments list
+        let theme = Theme::load_builtin(theme::THEME_DARK).unwrap();
+        let markdown = "Keyword Arguments:\n    - prog -- The name\n    - usage -- A usage message";
+        let lines = parse_markdown(markdown, &theme, None);
+
+        // Should preserve line breaks for proper list formatting
+        assert!(
+            lines.len() >= 3,
+            "Should have multiple lines for keyword args list, got {} lines: {:?}",
+            lines.len(),
+            lines.iter().map(get_line_text).collect::<Vec<_>>()
         );
     }
 
