@@ -132,7 +132,8 @@ async function install() {
             }
         });
     } catch (error) {
-        throw new Error(`Extraction failed after retries: ${error.message}. Archive: ${archivePath}`);
+        error.message = `Extraction failed after retries: ${error.message}. Archive: ${archivePath}`;
+        throw error;
     }
 
     // Cleanup archive file
